@@ -135,7 +135,7 @@ def forget_session(session: str) -> None:
 
 
 def companies() -> dict[str, dict]:
-    return {n: {"repo": c.get("repo", ""), "ws": c.get("ws", ""), "members": dict(c.get("members", {}))}
+    return {n: {"repo": c.get("repo", ""), "ws": c.get("ws", ""), "parent": c.get("parent", ""), "members": dict(c.get("members", {}))}
             for n, c in load_config().get("companies", {}).items()}
 
 
@@ -157,11 +157,15 @@ def _drop_from_companies(session: str) -> None:
         _save_companies(cs)
 
 
-def set_company(name: str, repo: str = "", ws: str = "") -> None:
+def set_company(name: str, repo: str = "", ws: str = "", parent: str | None = None) -> None:
     cs = companies()
-    c = cs.setdefault(name, {"repo": "", "ws": "", "members": {}})
+    if parent and (parent == name or parent not in cs):
+        raise KeyError("상위 회사가 없습니다")
+    c = cs.setdefault(name, {"repo": "", "ws": "", "parent": "", "members": {}})
     c["repo"] = repo or c["repo"]
     c["ws"] = ws or c["ws"]
+    if parent is not None:
+        c["parent"] = parent
     _save_companies(cs)
 
 
@@ -183,5 +187,8 @@ def delete_company(name: str) -> list[str]:
     if name not in cs:
         raise KeyError("회사가 없습니다")
     members = list(cs.pop(name)["members"])
+    for c in cs.values():
+        if c["parent"] == name:
+            c["parent"] = ""
     _save_companies(cs)
     return members

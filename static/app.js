@@ -160,29 +160,37 @@ const COMPANY_COLORS = ['#f0b35a', '#5fd3d3', '#e88cc4', '#a3c46a', '#c792ea'];
 const DEPT_ORDER = ['운영', '기능', '개발', '층', '검증'];
 
 function renderCompanies(ul, members) {
-  companies.forEach((c, i) => {
-    const color = COMPANY_COLORS[i % COMPANY_COLORS.length];
+  const names = new Set(companies.map((c) => c.name));
+  const kids = (parent) => companies.filter((c) => (names.has(c.parent) ? c.parent : '') === parent);
+  const color = (c) => COMPANY_COLORS[companies.indexOf(c) % COMPANY_COLORS.length];
+  const below = (c) => [c.name, ...kids(c.name).flatMap(below)];
+  const walk = (c, depth) => {
     const mine = members.filter((s) => s.company === c.name);
-    ul.appendChild(companyHeader(c, mine, color));
+    const all = members.filter((s) => below(c).includes(s.company));
+    ul.appendChild(companyHeader(c, all, color(c), depth));
     if (collapsedGroups.has(`co:${c.name}`)) return;
-    const put = (s, depth) => {
-      const li = sessionItem(s, true, depth);
+    const put = (s, d) => {
+      const li = sessionItem(s, true, d);
       li.classList.add('ing');
-      li.style.setProperty('--gc', color);
+      li.style.setProperty('--gc', color(c));
       ul.appendChild(li);
     };
-    for (const s of mine.filter((x) => !x.dept)) put(s, 1);
+    for (const s of mine.filter((x) => !x.dept)) put(s, depth + 1);
     const depts = [...new Set(mine.map((s) => s.dept).filter(Boolean))].sort((a, b) => {
       const ia = DEPT_ORDER.indexOf(a), ib = DEPT_ORDER.indexOf(b);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, 'ko');
     });
     for (const d of depts) {
       const ds = mine.filter((s) => s.dept === d);
-      ul.appendChild(deptHeader(c.name, d, ds, color));
-      if (!collapsedGroups.has(`co:${c.name}/${d}`)) for (const s of ds) put(s, 2);
+      ul.appendChild(deptHeader(c.name, d, ds, color(c), depth + 1));
+      if (!collapsedGroups.has(`co:${c.name}/${d}`)) for (const s of ds) put(s, depth + 2);
     }
-  });
+    for (const k of kids(c.name)) walk(k, depth + 1);
+  };
+  for (const c of kids('')) walk(c, 0);
 }
+
+const kidsOf = (name) => companies.filter((c) => c.parent === name);
 
 function stateDots(el, members) {
   for (const s of members) {
@@ -201,14 +209,15 @@ function foldToggle(key) {
   renderList();
 }
 
-function companyHeader(c, members, color) {
+function companyHeader(c, members, color, depth = 0) {
   const key = `co:${c.name}`;
   const li = document.createElement('li');
   li.className = 'group company';
+  if (depth) li.style.marginLeft = `${depth * 12}px`;
   li.style.setProperty('--gc', color);
   li.title = `저장소 ${c.repo}\n작업공간 ${c.ws}`;
   li.innerHTML = '<span class="gname"></span><span class="gdots"></span><span class="gcount"></span>';
-  li.querySelector('.gname').textContent = `${collapsedGroups.has(key) ? '▸' : '▾'} 🏢 ${c.name}`;
+  li.querySelector('.gname').textContent = `${collapsedGroups.has(key) ? '▸' : '▾'} ${kidsOf(c.name).length ? '🏛' : '🏢'} ${c.name}`;
   li.querySelector('.gcount').textContent = members.length;
   stateDots(li.querySelector('.gdots'), members);
   li.onclick = () => foldToggle(key);
@@ -225,11 +234,11 @@ function companyHeader(c, members, color) {
   return li;
 }
 
-function deptHeader(company, dept, members, color) {
+function deptHeader(company, dept, members, color, depth = 1) {
   const key = `co:${company}/${dept}`;
   const li = document.createElement('li');
   li.className = 'group sub dept';
-  li.style.marginLeft = '12px';
+  li.style.marginLeft = `${depth * 12}px`;
   li.style.setProperty('--gc', color);
   li.innerHTML = '<span class="gname"></span><span class="gdots"></span><span class="gcount"></span>';
   li.querySelector('.gname').textContent = `${collapsedGroups.has(key) ? '▸' : '▾'} ${dept}`;

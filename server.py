@@ -450,7 +450,7 @@ COMPANY_NAME = re.compile(r"^[a-z][a-z0-9-]{1,19}$")
 @api.get("/companies")
 def api_companies():
     return {"maker": bool(COMPANY_CMD),
-            "companies": [{"name": n, "repo": c["repo"], "ws": c["ws"]} for n, c in store.companies().items()]}
+            "companies": [{"name": n, "repo": c["repo"], "ws": c["ws"], "parent": c["parent"]} for n, c in store.companies().items()]}
 
 
 class NewCompany(BaseModel):
