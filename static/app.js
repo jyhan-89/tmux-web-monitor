@@ -19,6 +19,7 @@ let sessions = [];
 let groups = [];
 let companies = [];
 let companyMaker = false;
+let sectionMaker = false;
 let sortMode = LS.get('sort', 'name-asc');
 const collapsedGroups = new Set(LS.get('collapsedGroups', []));
 const conns = new Map();
@@ -100,6 +101,7 @@ async function refresh() {
     [sessions, groups, co] = await Promise.all([api('GET', '/sessions'), api('GET', '/groups'), api('GET', '/companies')]);
     companies = co.companies;
     companyMaker = co.maker;
+    sectionMaker = !!co.sectionMaker;
     $('newcompany').hidden = !companyMaker;
   } catch (e) {
     toast('목록 오류: ' + e.message);
@@ -226,6 +228,7 @@ function companyHeader(c, members, color, depth = 0) {
     e.stopPropagation();
     openCtx(e.clientX, e.clientY, [
       { label: collapsedGroups.has(key) ? '펼치기' : '접기', run: () => li.click() },
+      ...(sectionMaker ? [{ label: '섹션 추가', run: () => openNewSection(c.name) }] : []),
       { label: '저장소 경로 복사', run: () => navigator.clipboard?.writeText(c.repo) },
       '-',
       { label: '회사 등록 해제 (세션은 유지)', danger: true, run: () => releaseCompany(c.name) },
@@ -274,6 +277,39 @@ async function openNewCompany() {
 }
 
 $('newcompany').onclick = openNewCompany;
+
+let sectionCompany = null;
+function openNewSection(name) {
+  sectionCompany = name;
+  $('sctitle').textContent = `${name} 섹션 추가`;
+  $('scerr').textContent = '';
+  $('scout').hidden = true;
+  $('scname').value = '';
+  $('scpaths').value = '';
+  $('scdept').value = '개발';
+  $('scok').disabled = false;
+  $('scdlg').showModal();
+  $('scname').focus();
+}
+
+$('scform').onsubmit = async (e) => {
+  e.preventDefault();
+  const section = $('scname').value.trim();
+  if (!section) return ($('scerr').textContent = '섹션 이름을 입력하세요');
+  $('scok').disabled = true;
+  $('scerr').textContent = '';
+  $('scout').hidden = false;
+  $('scout').textContent = '만드는 중… (작업 트리·요청함·카드를 준비하고 세션을 띄웁니다)';
+  try {
+    const r = await api('POST', `/companies/${enc(sectionCompany)}/sections`, { section, dept: $('scdept').value, paths: $('scpaths').value.trim() || null });
+    $('scout').textContent = r.output || '완료';
+    refresh();
+  } catch (err) {
+    $('scout').hidden = true;
+    $('scerr').textContent = err.message;
+  }
+  $('scok').disabled = false;
+};
 
 $('coform').onsubmit = async (e) => {
   e.preventDefault();

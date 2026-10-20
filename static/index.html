@@ -161,6 +161,22 @@
   </form>
 </dialog>
 
+<dialog id="scdlg">
+  <form id="scform">
+    <h2 id="sctitle">섹션 추가</h2>
+    <p class="hint">회사 저장소에 feat/&lt;섹션&gt; 작업 트리와 요청함·카드를 만들고 세션을 띄웁니다. 맡은 경로는 회사 규칙에 적힙니다.</p>
+    <label>섹션 이름 <input id="scname" placeholder="영문 소문자 (예: api)" autocomplete="off"></label>
+    <label>부서 <select id="scdept"><option>개발</option><option>검증</option><option>운영</option></select></label>
+    <label>맡은 경로 <input id="scpaths" placeholder="예: src/api/** (비우면 기본값)" autocomplete="off"></label>
+    <div class="err" id="scerr"></div>
+    <pre id="scout" class="coout" hidden></pre>
+    <div class="actions">
+      <button type="button" data-close>닫기</button>
+      <button id="scok" class="primary">만들기</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="movedlg">
   <h2 id="movetitle">그룹으로 이동</h2>
   <div id="movelist"></div>

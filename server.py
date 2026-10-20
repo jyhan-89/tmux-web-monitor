@@ -445,11 +445,13 @@ def api_move_session(name: str, body: MoveGroup):
 
 COMPANY_CMD = os.environ.get("TMUX_WEB_COMPANY_CMD", "").strip()
 COMPANY_NAME = re.compile(r"^[a-z][a-z0-9-]{1,19}$")
+SECTION_CMD = os.environ.get("TMUX_WEB_SECTION_CMD", "").strip()
+DEPTS = ("개발", "검증", "운영")
 
 
 @api.get("/companies")
 def api_companies():
-    return {"maker": bool(COMPANY_CMD),
+    return {"maker": bool(COMPANY_CMD), "sectionMaker": bool(SECTION_CMD),
             "companies": [{"name": n, "repo": c["repo"], "ws": c["ws"], "parent": c["parent"]} for n, c in store.companies().items()]}
 
 
@@ -472,6 +474,38 @@ def api_create_company(body: NewCompany):
         r = subprocess.run([*COMPANY_CMD.split(), name, repo], capture_output=True, text=True, timeout=300)
     except subprocess.TimeoutExpired:
         raise HTTPException(500, "회사 만들기가 5분 안에 끝나지 않았습니다")
+    out = (r.stdout + r.stderr).strip()
+    if r.returncode != 0:
+        raise HTTPException(400, out[-2000:] or f"실패 (종료 코드 {r.returncode})")
+    return {"ok": True, "output": out[-4000:]}
+
+
+class NewSection(BaseModel):
+    section: str
+    dept: str | None = None
+    paths: str | None = None
+
+
+@api.post("/companies/{name}/sections")
+def api_add_section(name: str, body: NewSection):
+    if not SECTION_CMD:
+        raise HTTPException(400, "섹션 추가 명령(TMUX_WEB_SECTION_CMD)이 설정되지 않았습니다")
+    if name not in store.companies():
+        raise HTTPException(404, f"회사가 없습니다: {name}")
+    sec = body.section.strip()
+    if not COMPANY_NAME.match(sec):
+        raise HTTPException(400, "섹션 이름은 영문 소문자로 시작하는 2~20자(소문자·숫자·-)로 입력하세요")
+    cmd = [*SECTION_CMD.split(), name, sec]
+    if body.dept:
+        if body.dept not in DEPTS:
+            raise HTTPException(400, "부서는 개발·검증·운영 중 하나입니다")
+        cmd += ["--dept", body.dept]
+    if body.paths and body.paths.strip():
+        cmd += ["--paths", body.paths.strip()]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(500, "섹션 추가가 5분 안에 끝나지 않았습니다")
     out = (r.stdout + r.stderr).strip()
     if r.returncode != 0:
         raise HTTPException(400, out[-2000:] or f"실패 (종료 코드 {r.returncode})")
