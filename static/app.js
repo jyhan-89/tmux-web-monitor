@@ -17,6 +17,8 @@ const STATE_LABEL = { working: '작업 중', waiting: '확인 필요', idle: '�
 
 let sessions = [];
 let groups = [];
+let companies = [];
+let companyMaker = false;
 let sortMode = LS.get('sort', 'name-asc');
 const collapsedGroups = new Set(LS.get('collapsedGroups', []));
 const conns = new Map();
@@ -94,7 +96,11 @@ function keepFocus(el) {
 
 async function refresh() {
   try {
-    [sessions, groups] = await Promise.all([api('GET', '/sessions'), api('GET', '/groups')]);
+    let co;
+    [sessions, groups, co] = await Promise.all([api('GET', '/sessions'), api('GET', '/groups'), api('GET', '/companies')]);
+    companies = co.companies;
+    companyMaker = co.maker;
+    $('newcompany').hidden = !companyMaker;
   } catch (e) {
     toast('목록 오류: ' + e.message);
     return;
@@ -124,7 +130,10 @@ function renderList() {
   if (drag) return;
   const ul = $('sessions');
   ul.innerHTML = '';
-  const sorted = sortSessions(sessions);
+  const all = sortSessions(sessions);
+  const known = new Set(companies.map((c) => c.name));
+  const sorted = all.filter((s) => !known.has(s.company));
+  renderCompanies(ul, all.filter((s) => known.has(s.company)));
   if (!groups.length) {
     for (const s of sorted) ul.appendChild(sessionItem(s, false));
     return;
@@ -146,6 +155,136 @@ function renderList() {
     if (!collapsedGroups.has('')) for (const s of loose) ul.appendChild(sessionItem(s, true, 1));
   }
 }
+
+const COMPANY_COLORS = ['#f0b35a', '#5fd3d3', '#e88cc4', '#a3c46a', '#c792ea'];
+const DEPT_ORDER = ['운영', '기능', '개발', '층', '검증'];
+
+function renderCompanies(ul, members) {
+  companies.forEach((c, i) => {
+    const color = COMPANY_COLORS[i % COMPANY_COLORS.length];
+    const mine = members.filter((s) => s.company === c.name);
+    ul.appendChild(companyHeader(c, mine, color));
+    if (collapsedGroups.has(`co:${c.name}`)) return;
+    const put = (s, depth) => {
+      const li = sessionItem(s, true, depth);
+      li.classList.add('ing');
+      li.style.setProperty('--gc', color);
+      ul.appendChild(li);
+    };
+    for (const s of mine.filter((x) => !x.dept)) put(s, 1);
+    const depts = [...new Set(mine.map((s) => s.dept).filter(Boolean))].sort((a, b) => {
+      const ia = DEPT_ORDER.indexOf(a), ib = DEPT_ORDER.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, 'ko');
+    });
+    for (const d of depts) {
+      const ds = mine.filter((s) => s.dept === d);
+      ul.appendChild(deptHeader(c.name, d, ds, color));
+      if (!collapsedGroups.has(`co:${c.name}/${d}`)) for (const s of ds) put(s, 2);
+    }
+  });
+}
+
+function stateDots(el, members) {
+  for (const s of members) {
+    if (s.state === 'working' || s.state === 'waiting') {
+      const d = document.createElement('span');
+      d.className = `dot st-${s.state}`;
+      d.title = `${s.name}: ${STATE_LABEL[s.state]}`;
+      el.appendChild(d);
+    }
+  }
+}
+
+function foldToggle(key) {
+  if (collapsedGroups.has(key)) collapsedGroups.delete(key); else collapsedGroups.add(key);
+  LS.set('collapsedGroups', [...collapsedGroups]);
+  renderList();
+}
+
+function companyHeader(c, members, color) {
+  const key = `co:${c.name}`;
+  const li = document.createElement('li');
+  li.className = 'group company';
+  li.style.setProperty('--gc', color);
+  li.title = `저장소 ${c.repo}\n작업공간 ${c.ws}`;
+  li.innerHTML = '<span class="gname"></span><span class="gdots"></span><span class="gcount"></span>';
+  li.querySelector('.gname').textContent = `${collapsedGroups.has(key) ? '▸' : '▾'} 🏢 ${c.name}`;
+  li.querySelector('.gcount').textContent = members.length;
+  stateDots(li.querySelector('.gdots'), members);
+  li.onclick = () => foldToggle(key);
+  li.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openCtx(e.clientX, e.clientY, [
+      { label: collapsedGroups.has(key) ? '펼치기' : '접기', run: () => li.click() },
+      { label: '저장소 경로 복사', run: () => navigator.clipboard?.writeText(c.repo) },
+      '-',
+      { label: '회사 등록 해제 (세션은 유지)', danger: true, run: () => releaseCompany(c.name) },
+    ]);
+  });
+  return li;
+}
+
+function deptHeader(company, dept, members, color) {
+  const key = `co:${company}/${dept}`;
+  const li = document.createElement('li');
+  li.className = 'group sub dept';
+  li.style.marginLeft = '12px';
+  li.style.setProperty('--gc', color);
+  li.innerHTML = '<span class="gname"></span><span class="gdots"></span><span class="gcount"></span>';
+  li.querySelector('.gname').textContent = `${collapsedGroups.has(key) ? '▸' : '▾'} ${dept}`;
+  li.querySelector('.gcount').textContent = members.length;
+  stateDots(li.querySelector('.gdots'), members);
+  li.onclick = () => foldToggle(key);
+  return li;
+}
+
+async function releaseCompany(name) {
+  if (!confirm(`회사 '${name}' 등록을 해제할까요? 세션과 폴더는 그대로 두고 목록에서만 회사 묶음을 없앱니다.`)) return;
+  try { await api('DELETE', `/companies/${enc(name)}`); } catch (e) { return toast(e.message); }
+  refresh();
+}
+
+async function openNewCompany() {
+  $('coerr').textContent = '';
+  $('coout').hidden = true;
+  $('coname').value = '';
+  $('corepo').value = '';
+  $('cook').disabled = false;
+  try {
+    const r = await api('GET', '/dirs');
+    $('corepolist').innerHTML = '';
+    for (const d of r.dirs) {
+      const o = document.createElement('option');
+      o.value = d;
+      $('corepolist').appendChild(o);
+    }
+  } catch {}
+  $('codlg').showModal();
+  $('coname').focus();
+}
+
+$('newcompany').onclick = openNewCompany;
+
+$('coform').onsubmit = async (e) => {
+  e.preventDefault();
+  const name = $('coname').value.trim(), repo = $('corepo').value.trim();
+  if (!name || !repo) return ($('coerr').textContent = '회사 이름과 저장소 폴더를 입력하세요');
+  $('cook').disabled = true;
+  $('coerr').textContent = '';
+  $('coout').hidden = false;
+  $('coout').textContent = '만드는 중… (섹션 작업 폴더와 세션을 준비합니다)';
+  try {
+    const r = await api('POST', '/companies', { name, repo });
+    $('coout').textContent = r.output || '완료';
+    collapsedGroups.delete(`co:${name}`);
+    refresh();
+  } catch (err) {
+    $('coout').hidden = true;
+    $('coerr').textContent = err.message;
+  }
+  $('cook').disabled = false;
+};
 
 function parentGroup(g) {
   const i = g.lastIndexOf('/');
@@ -329,6 +468,7 @@ function listMenu() {
   return [
     { label: '새 세션', run: () => openNewSession() },
     { label: '새 그룹', run: () => $('newgroup').click() },
+    ...(companyMaker ? [{ label: '새 AI 회사', run: openNewCompany }] : []),
     { label: '세션 저장 / 복원', run: openPersist },
     '-',
     { label: '새로고침', run: refresh },

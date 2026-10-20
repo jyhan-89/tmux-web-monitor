@@ -141,6 +141,7 @@ sudo tailscale serve --bg http://127.0.0.1:8765     # https://<기기이름>.<ta
 | `PORT` | `8765` | 포트 |
 | `BASE_PATH` | `/dev` | URL 경로 |
 | `TMUX_WEB_FILES_ROOT` | `~` | 파일 탐색 범위 |
+| `TMUX_WEB_COMPANY_CMD` | (없음) | 회사 만들기 명령. 설정하면 목록에 "＋ 회사"가 나오고 `명령 <이름> <git 저장소>`를 실행한다. 회사는 그룹과 따로 회사 → 부서 → 세션으로 묶인다 |
 | `TMUX_WEB_CONFIG` | `~/.config/tmux-web` | 설정·데이터 폴더 |
 | `TMUX_WEB_AUTH` | `~/.config/tmux-web/auth.json` | 계정 파일 |
 | `TMUX_WEB_TLS` | `~/.config/tmux-web/tls` | 자체 인증서 폴더 |

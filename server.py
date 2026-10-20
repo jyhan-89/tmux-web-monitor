@@ -241,8 +241,10 @@ def api_version():
 def api_sessions():
     sessions = list_sessions()
     group_of = store.group_of()
+    company_of = store.company_of()
     for s in sessions:
         s["group"] = group_of.get(s["name"])
+        s["company"], s["dept"] = company_of.get(s["name"], (None, None))
         st = push.status.get(s["name"], {})
         s["state"] = st.get("state", "")
         s["preview"] = st.get("preview", [])
@@ -439,6 +441,50 @@ def api_move_session(name: str, body: MoveGroup):
     except KeyError as e:
         raise HTTPException(404, e.args[0])
     return {"ok": True}
+
+
+COMPANY_CMD = os.environ.get("TMUX_WEB_COMPANY_CMD", "").strip()
+COMPANY_NAME = re.compile(r"^[a-z][a-z0-9-]{1,19}$")
+
+
+@api.get("/companies")
+def api_companies():
+    return {"maker": bool(COMPANY_CMD),
+            "companies": [{"name": n, "repo": c["repo"], "ws": c["ws"]} for n, c in store.companies().items()]}
+
+
+class NewCompany(BaseModel):
+    name: str
+    repo: str
+
+
+@api.post("/companies")
+def api_create_company(body: NewCompany):
+    if not COMPANY_CMD:
+        raise HTTPException(400, "회사 만들기 명령(TMUX_WEB_COMPANY_CMD)이 설정되지 않았습니다")
+    name = body.name.strip()
+    if not COMPANY_NAME.match(name):
+        raise HTTPException(400, "회사 이름은 영문 소문자로 시작하는 2~20자(소문자·숫자·-)로 입력하세요")
+    repo = os.path.realpath(os.path.expanduser(body.repo.strip()))
+    if not os.path.isdir(os.path.join(repo, ".git")) and not os.path.isfile(os.path.join(repo, ".git")):
+        raise HTTPException(400, f"git 저장소 최상위 폴더가 아닙니다: {repo}")
+    try:
+        r = subprocess.run([*COMPANY_CMD.split(), name, repo], capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(500, "회사 만들기가 5분 안에 끝나지 않았습니다")
+    out = (r.stdout + r.stderr).strip()
+    if r.returncode != 0:
+        raise HTTPException(400, out[-2000:] or f"실패 (종료 코드 {r.returncode})")
+    return {"ok": True, "output": out[-4000:]}
+
+
+@api.delete("/companies/{name}")
+def api_delete_company(name: str):
+    try:
+        members = store.delete_company(name)
+    except KeyError as e:
+        raise HTTPException(404, e.args[0])
+    return {"released": members}
 
 
 def safe_path(path: str | None) -> Path:

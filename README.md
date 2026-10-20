@@ -145,6 +145,7 @@ sudo tailscale serve --bg http://127.0.0.1:8765     # https://<machine>.<tailnet
 | `PORT` | `8765` | Port |
 | `BASE_PATH` | `/dev` | URL path |
 | `TMUX_WEB_FILES_ROOT` | `~` | Root of the file browser |
+| `TMUX_WEB_COMPANY_CMD` | (none) | Company creation command. When set, the list shows "+ 회사" and runs `cmd <name> <git repo>`. Companies are listed apart from groups as company → department → session |
 | `TMUX_WEB_CONFIG` | `~/.config/tmux-web` | Settings and data folder |
 | `TMUX_WEB_AUTH` | `~/.config/tmux-web/auth.json` | Account file |
 | `TMUX_WEB_TLS` | `~/.config/tmux-web/tls` | Self-signed certificate folder |

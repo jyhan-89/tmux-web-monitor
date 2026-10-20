@@ -111,6 +111,7 @@ def move_session(session: str, group: str | None) -> None:
         if group not in gs:
             raise KeyError("그룹이 없습니다")
         gs[group].append(session)
+        _drop_from_companies(session)
     _save_groups(gs)
 
 
@@ -118,9 +119,69 @@ def rename_session(old: str, new: str) -> None:
     gs = groups()
     if any(old in members for members in gs.values()):
         _save_groups({g: [new if s == old else s for s in members] for g, members in gs.items()})
+    cs = companies()
+    if any(old in c["members"] for c in cs.values()):
+        for c in cs.values():
+            if old in c["members"]:
+                c["members"][new] = c["members"].pop(old)
+        _save_companies(cs)
 
 
 def forget_session(session: str) -> None:
     gs = groups()
     if any(session in members for members in gs.values()):
         _save_groups({g: [s for s in members if s != session] for g, members in gs.items()})
+    _drop_from_companies(session)
+
+
+def companies() -> dict[str, dict]:
+    return {n: {"repo": c.get("repo", ""), "ws": c.get("ws", ""), "members": dict(c.get("members", {}))}
+            for n, c in load_config().get("companies", {}).items()}
+
+
+def _save_companies(cs: dict) -> None:
+    cfg = load_config()
+    cfg["companies"] = cs
+    save_config(cfg)
+
+
+def company_of() -> dict[str, tuple[str, str]]:
+    return {s: (n, d) for n, c in companies().items() for s, d in c["members"].items()}
+
+
+def _drop_from_companies(session: str) -> None:
+    cs = companies()
+    if any(session in c["members"] for c in cs.values()):
+        for c in cs.values():
+            c["members"].pop(session, None)
+        _save_companies(cs)
+
+
+def set_company(name: str, repo: str = "", ws: str = "") -> None:
+    cs = companies()
+    c = cs.setdefault(name, {"repo": "", "ws": "", "members": {}})
+    c["repo"] = repo or c["repo"]
+    c["ws"] = ws or c["ws"]
+    _save_companies(cs)
+
+
+def company_assign(name: str, session: str, dept: str = "") -> None:
+    cs = companies()
+    if name not in cs:
+        raise KeyError("회사가 없습니다")
+    for c in cs.values():
+        c["members"].pop(session, None)
+    cs[name]["members"][session] = dept
+    _save_companies(cs)
+    gs = groups()
+    if any(session in members for members in gs.values()):
+        _save_groups({g: [s for s in members if s != session] for g, members in gs.items()})
+
+
+def delete_company(name: str) -> list[str]:
+    cs = companies()
+    if name not in cs:
+        raise KeyError("회사가 없습니다")
+    members = list(cs.pop(name)["members"])
+    _save_companies(cs)
+    return members
