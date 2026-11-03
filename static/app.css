@@ -62,7 +62,8 @@ aside header button { padding:4px 8px; }
 
 main { flex:1; display:flex; flex-direction:column; min-width:0; }
 #bar { padding:6px 8px; border-bottom:1px solid var(--line); display:flex; gap:6px; align-items:center; }
-#bar > button { flex:none; padding:4px 9px; }
+#bar > button, #tools > button { flex:none; padding:4px 9px; }
+#tools { flex:none; display:flex; gap:6px; align-items:center; overflow-x:auto; scrollbar-width:none; }
 #bar { overflow-x:auto; scrollbar-width:none; }
 @media (pointer:coarse) { #fontdown, #fontup { display:none; } }
 #desks { flex:0 1 auto; min-width:28px; overflow-x:auto; scrollbar-width:none; display:flex; gap:3px; align-items:center; }
@@ -366,4 +367,4 @@ main { position:relative; }
 #barpeek button { padding:3px 9px; background:rgba(52,55,61,.92); }
 body.barhide #bar, body.barhide #winbar { display:none !important; }
 body.barhide #barpeek { display:flex; }
-@media (max-width:768px) { #bar { flex-wrap:wrap; row-gap:4px; } #tabs { order:1; flex:1 0 100%; } #tabs:empty { display:none; } #bar { column-gap:4px; } #desks { flex:1 1 0; } }
+@media (max-width:768px) { #bar, #tools { gap:4px; } #tabs, #tools { flex:1 1 0; } #tools > :first-child { margin-left:auto; } #tabs:empty + #tools { flex:1 1 auto; } }
