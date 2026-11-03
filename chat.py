@@ -73,12 +73,47 @@ def find(name: str, live: dict[str, dict] | None = None) -> dict | None:
     return None
 
 
+_paths: dict[str, Path] = {}
+_last: dict[Path, tuple[float, list[str]]] = {}
+
+
 def transcript(sess: dict) -> Path | None:
     sid = sess.get("sessionId") or ""
     if not re.fullmatch(r"[0-9a-f-]{36}", sid):
         return None
+    hit = _paths.get(sid)
+    if hit and hit.exists():
+        return hit
     hits = sorted((CLAUDE_HOME / "projects").glob(f"*/{sid}.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if hits:
+        _paths[sid] = hits[0]
     return hits[0] if hits else None
+
+
+def last_said(sess: dict) -> list[str]:
+    path = transcript(sess)
+    if not path:
+        return []
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return []
+    hit = _last.get(path)
+    if hit and hit[0] == mtime:
+        return hit[1]
+    size = path.stat().st_size
+    with path.open("rb") as f:
+        f.seek(max(0, size - 300_000))
+        buf = f.read()
+    said = []
+    for it in reversed(items(buf.splitlines()[1:])):
+        if it["k"] in ("text", "user") and len(it["text"].strip()) >= 12:
+            lines = [re.sub(r"[*`#>|]+", "", x).strip() for x in it["text"].splitlines()]
+            lines = [x for x in lines if len(x) > 6] or [x for x in lines if x]
+            said = [("나: " if it["k"] == "user" else "") + " ".join(lines)[:300]]
+            break
+    _last[path] = (mtime, said)
+    return said
 
 
 def _text(content) -> str:
@@ -115,6 +150,9 @@ def items(lines: list[bytes]) -> list[dict]:
                         text = _text(x.get("content"))
                         out.append({"k": "result", "id": x.get("tool_use_id"), "error": bool(x.get("is_error")),
                                     "text": text[:MAX_RESULT], "cut": len(text) > MAX_RESULT})
+                continue
+            if d.get("isCompactSummary"):
+                out.append({"k": "summary", "text": "대화가 길어 앞부분을 요약하고 이어서 한다", "ts": ts})
                 continue
             if d.get("isMeta"):
                 continue

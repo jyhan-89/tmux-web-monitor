@@ -453,6 +453,7 @@ function sessionItem(s, inGroup, depth = 0) {
     badge.remove();
   }
   const pv = li.querySelector('.preview');
+  pv.classList.toggle('said', !!s.claude);
   for (const line of s.preview || []) {
     const d = document.createElement('div');
     d.textContent = line;

@@ -250,7 +250,10 @@ def api_sessions():
         st = push.status.get(s["name"], {})
         s["state"] = st.get("state", "")
         s["preview"] = st.get("preview", [])
-        s["claude"] = any(p["id"] in live for w in s["windows"] for p in w["panes"])
+        mine = [live[p["id"]] for w in s["windows"] for p in w["panes"] if p["id"] in live]
+        s["claude"] = bool(mine)
+        if mine:
+            s["preview"] = chat.last_said(mine[0]) or s["preview"]
     return sessions
 
 
