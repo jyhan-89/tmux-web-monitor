@@ -366,3 +366,4 @@ main { position:relative; }
 #barpeek button { padding:3px 9px; background:rgba(52,55,61,.92); }
 body.barhide #bar, body.barhide #winbar { display:none !important; }
 body.barhide #barpeek { display:flex; }
+@media (max-width:768px) { #bar { flex-wrap:wrap; row-gap:4px; } #tabs { order:1; flex:1 0 100%; } #tabs:empty { display:none; } #bar { column-gap:4px; } #desks { flex:1 1 0; } }
