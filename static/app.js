@@ -3486,6 +3486,7 @@ $('fontdown').onclick = () => setFontSize(fontSize - 1);
 $('fontup').onclick = () => setFontSize(fontSize + 1);
 
 let touch = null;
+const inChat = (e) => !!e.target.closest?.('.chat:not([hidden])');
 const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
 const cellHeight = (c) => c.el.clientHeight / c.term.rows || 16;
 
@@ -3493,7 +3494,9 @@ termEl.addEventListener('touchstart', (e) => {
   const name = e.target.closest('.pane')?.dataset.name;
   if (name && name !== activeName) activate(name, false);
   const t = e.touches;
-  if (t.length === 2) {
+  if (inChat(e)) {
+    touch = null;
+  } else if (t.length === 2) {
     touch = { mode: 'pinch', startDist: dist(t), startSize: fontSize };
   } else if (t.length === 1) {
     touch = { mode: 'pending', x0: t[0].clientX, y0: t[0].clientY, y: t[0].clientY, acc: 0 };
@@ -3540,7 +3543,7 @@ let wheelAcc = 0;
 termEl.addEventListener('wheel', (e) => {
   const name = e.target.closest('.pane')?.dataset.name;
   const c = conns.get(name);
-  if (!c) return;
+  if (!c || inChat(e)) return;
   e.preventDefault();
   e.stopPropagation();
   const px = e.deltaMode === 1 ? e.deltaY * cellHeight(c) : e.deltaMode === 2 ? e.deltaY * c.el.clientHeight : e.deltaY;

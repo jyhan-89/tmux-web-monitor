@@ -352,7 +352,6 @@ def api_capture(name: str, lines: int = 2000):
 
 @api.get("/sessions/{name}/chat")
 def api_chat(name: str, after: int | None = None, before: int | None = None, sid: str = ""):
-    find_session(name)
     sess = chat.find(name)
     path = sess and chat.transcript(sess)
     if not path:
