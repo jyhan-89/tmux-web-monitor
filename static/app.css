@@ -294,7 +294,7 @@ a.btn:hover { border-color:var(--accent); }
 .md blockquote { margin:0; padding-left:14px; border-left:3px solid var(--line); color:var(--dim); }
 .md hr { border:0; border-top:1px solid var(--line); }
 
-@media (max-width:768px), (pointer:coarse) { #keys { display:flex; } }
+@media (max-width:768px), (pointer:coarse) { body.typing #keys { display:flex; } }
 
 @media (max-width:768px) {
   aside { position:fixed; top:0; left:0; height:var(--app-h, 100dvh); padding-top:env(safe-area-inset-top); width:min(88vw, 340px); z-index:20; transform:translateX(-100%); transition:transform .2s; }

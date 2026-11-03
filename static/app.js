@@ -1997,6 +1997,16 @@ $('pastekey').onclick = async () => {
   }
 };
 keepFocus($('keys'));
+let typingTimer = 0;
+function syncTyping() {
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(() => {
+    const el = document.activeElement;
+    document.body.classList.toggle('typing', !!el && (el.classList.contains('xterm-helper-textarea') || el.id === 'ime'));
+  }, 120);
+}
+document.addEventListener('focusin', syncTyping);
+document.addEventListener('focusout', syncTyping);
 keepFocus($('imebar'));
 
 async function loadConfig() {

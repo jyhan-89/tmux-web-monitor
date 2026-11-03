@@ -20,7 +20,7 @@ The UI is in Korean.
 - **Split view**: drag a tab to split up/down/left/right, a tab bar per area, resize with the dividers
 - **Virtual desktops**: each desktop keeps its own split layout and tabs; switch with Alt+1–9. A session can be on several desktops, and setups can be saved on the server and loaded on other devices
 - **Session management**: create (working folder, start command), rename, kill; switch and close tmux windows/panes
-- **Input**: input box for Korean (IME) text, buttons for frequently used commands, mobile keys (Esc, Ctrl, arrows, …)
+- **Input**: input box for Korean (IME) text, buttons for frequently used commands, mobile keys (Esc, Ctrl, arrows, … — shown only while the terminal or input box has focus)
 - **Files**: browse under the home folder, view Markdown and code, upload files. Editing, copy, move and delete are optional (off by default)
 - **Copy**: selecting text by dragging in the terminal or file viewer copies it to the clipboard of the device you are using
 - **Notifications**: web push when a Claude task finishes or needs input (requires HTTPS)
