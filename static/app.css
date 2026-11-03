@@ -356,3 +356,5 @@ a.btn:hover { border-color:var(--accent); }
 .cu.long { max-height:14em; overflow:hidden; cursor:pointer; -webkit-mask-image:linear-gradient(#000 70%, transparent); mask-image:linear-gradient(#000 70%, transparent); }
 .ct .tin .del { color:var(--err); }
 .ct .tin .add { color:var(--ok); }
+.cwarn { display:flex; gap:8px; align-items:center; justify-content:center; padding:6px 10px; background:rgba(240,179,90,.15); color:var(--warn); font-size:13px; border-bottom:1px solid var(--line); }
+.cwarn[hidden] { display:none; }

@@ -250,7 +250,7 @@ def api_sessions():
         st = push.status.get(s["name"], {})
         s["state"] = st.get("state", "")
         s["preview"] = st.get("preview", [])
-        mine = [live[p["id"]] for w in s["windows"] for p in w["panes"] if p["id"] in live]
+        mine = [live[p["id"]] for w in s["windows"] for p in w["panes"] if p["id"] in live and chat.transcript(live[p["id"]])]
         s["claude"] = bool(mine)
         if mine:
             s["preview"] = chat.last_said(mine[0]) or s["preview"]
@@ -359,8 +359,18 @@ def api_chat(name: str, after: int | None = None, before: int | None = None, sid
     if sid != sess["sessionId"]:
         after = before = None
     state, ask = chat.screen(sess["pane"])
-    return {"claude": True, "sid": sess["sessionId"], "pane": sess["pane"], "state": state, "prompt": ask,
+    return {"claude": True, "sid": sess["sessionId"], "pane": sess["pane"], "active": sess["active"], "state": state, "prompt": ask,
             **chat.read(path, after, before)}
+
+
+@api.post("/sessions/{name}/focus-claude")
+def api_focus_claude(name: str):
+    sess = chat.find(name)
+    if not sess:
+        raise HTTPException(409, "Claude가 떠 있지 않습니다")
+    run("select-window", "-t", sess["pane"])
+    run("select-pane", "-t", sess["pane"])
+    return {"ok": True}
 
 
 class Choose(BaseModel):

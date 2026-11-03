@@ -63,6 +63,9 @@ def test_read_tail_after_before(tmp_path, monkeypatch):
     r = chat.read(p)
     assert r["end"] == p.stat().st_size and 0 < r["start"] < r["end"]
     assert r["items"][-1]["text"] == "말 039" and not r["reset"]
+    raw = p.read_bytes()
+    assert all(raw[i["o"]:].startswith(b'{"type": "assistant"') for i in r["items"])
+    assert json.loads(raw[r["items"][-1]["o"]:].split(b"\n", 1)[0])["message"]["content"][1]["text"] == "말 039"
     with p.open("ab") as f:
         f.write(say("새 말") + say("덜 쓴")[:-5])
     a = chat.read(p, after=r["end"])
@@ -150,16 +153,18 @@ def test_live_sessions_and_find(tmp_path, monkeypatch):
     (tmp_path / "sessions" / "1.json").write_text(json.dumps({"pid": 1, "sessionId": sid, "tmux": "dev:@3.%7"}))
     (tmp_path / "sessions" / "2.json").write_text(json.dumps({"pid": 2, "sessionId": sid, "tmux": "x:@1.%9"}))
     (tmp_path / "sessions" / "3.json").write_text("{bad")
+    (tmp_path / "sessions" / "4.json").write_text(json.dumps({"pid": 1, "sessionId": "00000000-0000-0000-0000-000000000000", "tmux": "y:@2.%8"}))
     monkeypatch.setattr(chat, "_alive", lambda pid: pid == 1)
     live = chat.live_sessions()
-    assert list(live) == ["%7"]
+    assert sorted(live) == ["%7", "%8"]
+    assert chat.transcript(live["%8"]) is None and "00000000-0000-0000-0000-000000000000" in chat._miss
 
     class R:
         returncode = 0
         stdout = "%6\t10\t100\n%7\t11\t101\n"
 
     monkeypatch.setattr(chat, "tmux", lambda *a: R())
-    assert chat.find("dev", live)["sessionId"] == sid
+    assert chat.find("dev", live)["sessionId"] == sid and chat.find("dev", live)["active"]
     proj = tmp_path / "projects" / "-w"
     proj.mkdir(parents=True)
     (proj / f"{sid}.jsonl").write_bytes(say("짧음") + say("이 일은 끝났고 다음 요청을 기다린다\n감시 재개") + say("감시 재개"))

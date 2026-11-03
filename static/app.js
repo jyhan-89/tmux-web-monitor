@@ -1983,13 +1983,22 @@ const dur = (ms) => (ms >= 60000 ? `${Math.floor(ms / 60000)}분 ${Math.round((m
 
 function initChat(conn) {
   const ch = conn.chat;
-  ch.el.innerHTML = `<div class="clist"><button class="cmore" hidden>이전 대화 더 보기</button><div class="citems"></div></div>
+  ch.el.innerHTML = `<div class="cwarn" hidden>입력이 Claude 창이 아닌 다른 창으로 갑니다 <button>Claude 창으로</button></div><div class="clist"><button class="cmore" hidden>이전 대화 더 보기</button><div class="citems"></div></div>
     <div class="cstate" hidden><div class="cask" hidden></div><span class="ctext"></span><button class="cstop">중단 (Esc)</button><button class="cterm">터미널 보기</button></div>`;
   ch.list = ch.el.querySelector('.clist');
   ch.items = ch.el.querySelector('.citems');
   ch.more = ch.el.querySelector('.cmore');
   ch.state = ch.el.querySelector('.cstate');
   ch.ask = ch.el.querySelector('.cask');
+  ch.warn = ch.el.querySelector('.cwarn');
+  ch.warn.querySelector('button').onclick = async () => {
+    try {
+      await api('POST', `/sessions/${encodeURIComponent(conn.name)}/focus-claude`);
+      ch.warn.hidden = true;
+    } catch (e) {
+      toast(e.message);
+    }
+  };
   ch.more.onclick = () => loadOlder(conn);
   ch.list.addEventListener('scroll', () => {
     ch.atBottom = ch.list.scrollHeight - ch.list.scrollTop - ch.list.clientHeight < 80;
@@ -2071,7 +2080,22 @@ function chatNode(ch, it) {
   } else {
     return null;
   }
+  if (it.o != null) d.dataset.o = it.o;
   return d;
+}
+
+function trimChat(ch) {
+  const nodes = ch.items.children;
+  if (nodes.length <= 700) return;
+  const cut = nodes.length - 500;
+  let i = cut;
+  while (i < nodes.length && nodes[i].dataset.o == null) i++;
+  if (i >= nodes.length) return;
+  for (const n of [...nodes].slice(0, i)) {
+    for (const [id, t] of ch.tools) if (t === n) ch.tools.delete(id);
+    n.remove();
+  }
+  ch.start = +ch.items.firstElementChild.dataset.o;
 }
 
 function clearChat(ch) {
@@ -2143,6 +2167,8 @@ async function pollChat(conn) {
       const n = chatNode(ch, it);
       if (n) ch.items.appendChild(n);
     }
+    ch.warn.hidden = r.active !== false;
+    if (stick) trimChat(ch);
     ch.more.hidden = ch.start <= 0;
     showChatState(conn, r.state, r.prompt);
     if (stick) l.scrollTop = l.scrollHeight;

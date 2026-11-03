@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 from tmuxctl import BOX_BORDER, CLAUDE_WAITING, analyze, capture, tmux
@@ -56,24 +57,25 @@ def find(name: str, live: dict[str, dict] | None = None) -> dict | None:
     rows = [line.split("\t") for line in r.stdout.splitlines()]
     rows.sort(key=lambda x: x[1] != "11")
     live = live_sessions() if live is None else live
-    for pane, _, _ in rows:
+    for pane, flag, _ in rows:
         if pane in live:
-            return live[pane]
+            return {**live[pane], "active": flag == "11"}
     by_pid = {d["pid"]: d for d in live.values()}
     if not by_pid:
         return None
     kids = _children()
-    for pane, _, root in rows:
+    for pane, flag, root in rows:
         todo = [int(root)]
         while todo:
             p = todo.pop()
             if p in by_pid:
-                return {**by_pid[p], "pane": pane}
+                return {**by_pid[p], "pane": pane, "active": flag == "11"}
             todo += kids.get(p, [])
     return None
 
 
 _paths: dict[str, Path] = {}
+_miss: dict[str, float] = {}
 _last: dict[Path, tuple[float, list[str]]] = {}
 
 
@@ -84,9 +86,13 @@ def transcript(sess: dict) -> Path | None:
     hit = _paths.get(sid)
     if hit and hit.exists():
         return hit
+    if time.time() - _miss.get(sid, 0) < 60:
+        return None
     hits = sorted((CLAUDE_HOME / "projects").glob(f"*/{sid}.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
     if hits:
         _paths[sid] = hits[0]
+    else:
+        _miss[sid] = time.time()
     return hits[0] if hits else None
 
 
@@ -156,58 +162,66 @@ def _tool_detail(name: str, inp: dict) -> str:
     return json.dumps(inp, ensure_ascii=False, indent=1)
 
 
-def items(lines: list[bytes]) -> list[dict]:
+def items(lines: list[bytes], offs: list[int] | None = None) -> list[dict]:
     out = []
-    for raw in lines:
-        try:
-            d = json.loads(raw)
-        except ValueError:
-            continue
-        if d.get("isSidechain"):
-            continue
-        t, ts = d.get("type"), d.get("timestamp", "")
-        msg = d.get("message") or {}
-        content = msg.get("content")
-        if t == "user":
-            if isinstance(content, list) and any(isinstance(x, dict) and x.get("type") == "tool_result" for x in content):
-                for x in content:
-                    if isinstance(x, dict) and x.get("type") == "tool_result":
-                        text = _text(x.get("content"))
-                        out.append({"k": "result", "id": x.get("tool_use_id"), "error": bool(x.get("is_error")),
-                                    "text": text[:MAX_RESULT], "cut": len(text) > MAX_RESULT})
-                continue
-            if d.get("isCompactSummary"):
-                out.append({"k": "summary", "text": "대화가 길어 앞부분을 요약하고 이어서 한다", "ts": ts})
-                continue
-            if d.get("isMeta"):
-                continue
-            text = _text(content)
-            if isinstance(content, list) and any(isinstance(x, dict) and x.get("type") == "image" for x in content):
-                text = (text + "\n[이미지]").strip()
-            kind = (d.get("origin") or {}).get("kind")
-            if text.strip().startswith("[Request interrupted by user"):
-                out.append({"k": "note", "text": "사용자가 중단함", "ts": ts})
-            elif kind == "task-notification" or text.lstrip().startswith("<"):
-                body = TAG.sub("", text).strip() or re.sub(r"<[^>]+>", " ", text)
-                body = HOOK.sub("", body)
-                out.append({"k": "note", "text": re.sub(r"\s+", " ", body).strip()[:600], "ts": ts})
-            elif text.strip():
-                out.append({"k": "user", "text": text, "ts": ts})
-        elif t == "assistant" and isinstance(content, list):
-            for x in content:
-                if not isinstance(x, dict):
-                    continue
-                if x.get("type") == "text" and x.get("text", "").strip():
-                    out.append({"k": "text", "text": x["text"], "ts": ts})
-                elif x.get("type") == "tool_use":
-                    name, inp = x.get("name", ""), x.get("input") or {}
-                    out.append({"k": "tool", "id": x.get("id"), "name": name, "input": _tool_input(name, inp),
-                                "detail": _tool_detail(name, inp)[:MAX_RESULT], "ts": ts})
-        elif t == "system" and d.get("subtype") == "away_summary" and d.get("content"):
-            out.append({"k": "summary", "text": d["content"], "ts": ts})
-        elif t == "system" and d.get("subtype") == "turn_duration":
-            out.append({"k": "turn", "ms": d.get("durationMs", 0), "ts": ts})
+    for i, raw in enumerate(lines):
+        mark = len(out)
+        _item(raw, out)
+        if offs is not None:
+            for it in out[mark:]:
+                it["o"] = offs[i]
     return out
+
+
+def _item(raw: bytes, out: list) -> None:
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        return
+    if d.get("isSidechain"):
+        return
+    t, ts = d.get("type"), d.get("timestamp", "")
+    msg = d.get("message") or {}
+    content = msg.get("content")
+    if t == "user":
+        if isinstance(content, list) and any(isinstance(x, dict) and x.get("type") == "tool_result" for x in content):
+            for x in content:
+                if isinstance(x, dict) and x.get("type") == "tool_result":
+                    text = _text(x.get("content"))
+                    out.append({"k": "result", "id": x.get("tool_use_id"), "error": bool(x.get("is_error")),
+                                "text": text[:MAX_RESULT], "cut": len(text) > MAX_RESULT})
+            return
+        if d.get("isCompactSummary"):
+            out.append({"k": "summary", "text": "대화가 길어 앞부분을 요약하고 이어서 한다", "ts": ts})
+            return
+        if d.get("isMeta"):
+            return
+        text = _text(content)
+        if isinstance(content, list) and any(isinstance(x, dict) and x.get("type") == "image" for x in content):
+            text = (text + "\n[이미지]").strip()
+        kind = (d.get("origin") or {}).get("kind")
+        if text.strip().startswith("[Request interrupted by user"):
+            out.append({"k": "note", "text": "사용자가 중단함", "ts": ts})
+        elif kind == "task-notification" or text.lstrip().startswith("<"):
+            body = TAG.sub("", text).strip() or re.sub(r"<[^>]+>", " ", text)
+            body = HOOK.sub("", body)
+            out.append({"k": "note", "text": re.sub(r"\s+", " ", body).strip()[:600], "ts": ts})
+        elif text.strip():
+            out.append({"k": "user", "text": text, "ts": ts})
+    elif t == "assistant" and isinstance(content, list):
+        for x in content:
+            if not isinstance(x, dict):
+                continue
+            if x.get("type") == "text" and x.get("text", "").strip():
+                out.append({"k": "text", "text": x["text"], "ts": ts})
+            elif x.get("type") == "tool_use":
+                name, inp = x.get("name", ""), x.get("input") or {}
+                out.append({"k": "tool", "id": x.get("id"), "name": name, "input": _tool_input(name, inp),
+                            "detail": _tool_detail(name, inp)[:MAX_RESULT], "ts": ts})
+    elif t == "system" and d.get("subtype") == "away_summary" and d.get("content"):
+        out.append({"k": "summary", "text": d["content"], "ts": ts})
+    elif t == "system" and d.get("subtype") == "turn_duration":
+        out.append({"k": "turn", "ms": d.get("durationMs", 0), "ts": ts})
 
 
 def read(path: Path, after: int | None = None, before: int | None = None) -> dict:
@@ -229,7 +243,12 @@ def read(path: Path, after: int | None = None, before: int | None = None) -> dic
     if before is None:
         end = start + cut
     buf = buf[:cut] if before is None else buf
-    return {"start": start, "end": end, "items": items(buf.splitlines()), "reset": after is not None and start != after}
+    lines, offs, pos = [], [], start
+    for raw in buf.splitlines(keepends=True):
+        lines.append(raw.rstrip(b"\n"))
+        offs.append(pos)
+        pos += len(raw)
+    return {"start": start, "end": end, "items": items(lines, offs), "reset": after is not None and start != after}
 
 
 def _strip(line: str) -> str:
