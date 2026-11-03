@@ -182,8 +182,12 @@ def items(lines: list[bytes]) -> list[dict]:
             if d.get("isMeta"):
                 continue
             text = _text(content)
+            if isinstance(content, list) and any(isinstance(x, dict) and x.get("type") == "image" for x in content):
+                text = (text + "\n[이미지]").strip()
             kind = (d.get("origin") or {}).get("kind")
-            if kind == "task-notification" or text.lstrip().startswith("<"):
+            if text.strip().startswith("[Request interrupted by user"):
+                out.append({"k": "note", "text": "사용자가 중단함", "ts": ts})
+            elif kind == "task-notification" or text.lstrip().startswith("<"):
                 body = TAG.sub("", text).strip() or re.sub(r"<[^>]+>", " ", text)
                 body = HOOK.sub("", body)
                 out.append({"k": "note", "text": re.sub(r"\s+", " ", body).strip()[:600], "ts": ts})

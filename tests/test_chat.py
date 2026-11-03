@@ -43,9 +43,12 @@ def test_items_maps_conversation():
         line(type="system", subtype="away_summary", content="자리 비운 사이"),
         line(type="system", subtype="turn_duration", durationMs=1234),
         b"{broken\n",
+        line(type="user", message={"content": [{"type": "text", "text": "[Request interrupted by user for tool use]"}]}),
+        line(type="user", message={"content": [{"type": "text", "text": "이거 봐"}, {"type": "image", "source": {}}]}),
     ]
     it = chat.items([x.rstrip(b"\n") for x in lines])
-    assert [i["k"] for i in it] == ["user", "note", "summary", "text", "tool", "result", "tool", "result", "tool", "summary", "turn"]
+    assert [i["k"] for i in it] == ["user", "note", "summary", "text", "tool", "result", "tool", "result", "tool", "summary", "turn", "note", "user"]
+    assert it[-2]["text"] == "사용자가 중단함" and it[-1]["text"] == "이거 봐\n[이미지]"
     assert it[1]["text"] == "[요청함] 1건"
     assert it[4]["input"] == "ls -l" and it[4]["detail"] == "ls -l\n# 목록"
     assert it[5]["cut"] and len(it[5]["text"]) == chat.MAX_RESULT
