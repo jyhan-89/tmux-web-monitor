@@ -49,7 +49,7 @@ aside header button { padding:4px 8px; }
 .preview div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .act { visibility:hidden; padding:0 6px; font-size:12px; }
 #sessions li:hover .act { visibility:visible; }
-@media (hover:none) { .act { visibility:visible; } }
+@media (hover:none), (any-pointer:coarse) { .act, #winbar .wx, .gtab .tclose, .flist .fmore { visibility:visible; } }
 
 .badge { font-size:11px; padding:1px 6px; border-radius:9px; flex:none; border:1px solid currentColor; }
 .st-working { color:var(--busy); }
@@ -63,7 +63,9 @@ aside header button { padding:4px 8px; }
 main { flex:1; display:flex; flex-direction:column; min-width:0; }
 #bar { padding:6px 8px; border-bottom:1px solid var(--line); display:flex; gap:6px; align-items:center; }
 #bar > button { flex:none; padding:4px 9px; }
-#desks { flex:none; display:flex; gap:3px; align-items:center; }
+#bar { overflow-x:auto; scrollbar-width:none; }
+@media (pointer:coarse) { #fontdown, #fontup { display:none; } }
+#desks { flex:0 1 auto; min-width:28px; overflow-x:auto; scrollbar-width:none; display:flex; gap:3px; align-items:center; }
 .desk { position:relative; display:flex; align-items:center; gap:5px; padding:3px 9px; font-size:12px; color:var(--dim); }
 .desk.on { border-color:var(--accent); color:var(--fg); background:#2c3a4f; }
 .desk .dnum { font-weight:700; }
@@ -185,7 +187,7 @@ dialog textarea { font:13px ui-monospace, monospace; resize:vertical; }
 #layoutlink { margin-top:8px; }
 #layoutlink b { color:var(--ok); }
 #layoutlink button { margin-left:6px; padding:2px 8px; font-size:12px; }
-#layoutchip { flex:none; display:flex; align-items:center; gap:5px; max-width:180px; padding:3px 9px; font-size:12px; border-color:rgba(76,195,138,.55); color:var(--fg); }
+#layoutchip { flex:0 1 auto; min-width:44px; display:flex; align-items:center; gap:5px; max-width:180px; padding:3px 9px; font-size:12px; border-color:rgba(76,195,138,.55); color:var(--fg); }
 #layoutchip .lcname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
 #layoutchip .lcdot { flex:none; width:7px; height:7px; border-radius:50%; background:var(--dim); }
 #layoutchip .lcdot.saved { background:var(--ok); }
