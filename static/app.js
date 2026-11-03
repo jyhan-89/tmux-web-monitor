@@ -3477,11 +3477,13 @@ $('fshowhidden').onchange = () => {
 function setFontSize(size) {
   fontSize = Math.max(8, Math.min(28, Math.round(size)));
   LS.set('fontSize', fontSize);
+  document.documentElement.style.setProperty('--chat-fs', `${fontSize + 2}px`);
   for (const c of conns.values()) {
     c.term.options.fontSize = fontSize;
     fitConn(c);
   }
 }
+document.documentElement.style.setProperty('--chat-fs', `${fontSize + 2}px`);
 $('fontdown').onclick = () => setFontSize(fontSize - 1);
 $('fontup').onclick = () => setFontSize(fontSize + 1);
 
@@ -3494,10 +3496,10 @@ termEl.addEventListener('touchstart', (e) => {
   const name = e.target.closest('.pane')?.dataset.name;
   if (name && name !== activeName) activate(name, false);
   const t = e.touches;
-  if (inChat(e)) {
-    touch = null;
-  } else if (t.length === 2) {
+  if (t.length === 2) {
     touch = { mode: 'pinch', startDist: dist(t), startSize: fontSize };
+  } else if (inChat(e)) {
+    touch = null;
   } else if (t.length === 1) {
     touch = { mode: 'pending', x0: t[0].clientX, y0: t[0].clientY, y: t[0].clientY, acc: 0 };
   }
