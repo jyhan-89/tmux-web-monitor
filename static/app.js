@@ -1074,6 +1074,10 @@ function removeFromTree(t, name) {
   return prune(t);
 }
 
+function closeTabs(names) {
+  for (const n of [...names]) closeSession(n);
+}
+
 function inOtherDesks(name) {
   return desks.some((d, i) => i !== deskIdx && leaves(d.tree).some((g) => g.tabs.includes(name)));
 }
@@ -1399,6 +1403,7 @@ function renderDesks() {
         { label: '이 데스크탑으로 이동', run: () => switchDesk(i) },
         { label: '이름 바꾸기', run: () => renameDesk(i) },
         { label: '데스크탑 구성 저장/불러오기', run: openLayouts },
+        { label: '이 데스크탑 탭 모두 닫기', disabled: i !== deskIdx || !leaves().some((g) => g.tabs.length), run: () => closeTabs(leaves().flatMap((g) => g.tabs)) },
         '-',
         { label: '데스크탑 삭제', danger: true, disabled: desks.length < 2, run: () => deleteDesk(i) },
       ]);
@@ -1635,6 +1640,17 @@ function buildGroup(g) {
       e.stopPropagation();
       closeSession(name);
     };
+    t.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const all = leaves().flatMap((x) => x.tabs);
+      openCtx(e.clientX, e.clientY, [
+        { label: '탭 닫기', run: () => closeSession(name) },
+        { label: '이 탭 빼고 모두 닫기', disabled: all.length < 2, run: () => closeTabs(all.filter((n) => n !== name)) },
+        { label: '이 칸의 다른 탭 닫기', disabled: g.tabs.length < 2, run: () => closeTabs(g.tabs.filter((n) => n !== name)) },
+        '-',
+        { label: `이 데스크탑 탭 모두 닫기 (${all.length})`, danger: true, run: () => closeTabs(all) },
+      ]);
+    });
     strip.appendChild(t);
   }
   w.appendChild(strip);
