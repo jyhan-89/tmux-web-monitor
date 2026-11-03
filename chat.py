@@ -125,10 +125,35 @@ def _text(content) -> str:
 
 
 def _tool_input(name: str, inp: dict) -> str:
+    if name == "TodoWrite":
+        todos = inp.get("todos") or []
+        return f"할 일 {sum(t.get('status') == 'completed' for t in todos)}/{len(todos)}"
     for k in ("command", "file_path", "pattern", "description", "url", "query", "prompt", "skill"):
         if isinstance(inp.get(k), str) and inp[k]:
             return inp[k]
     return json.dumps(inp, ensure_ascii=False)[:300]
+
+
+def _lines(prefix: str, text: str) -> str:
+    return "\n".join(prefix + x for x in str(text).splitlines())
+
+
+def _tool_detail(name: str, inp: dict) -> str:
+    if name == "Bash":
+        return inp.get("command", "") + (f"\n# {inp['description']}" if inp.get("description") else "")
+    if name == "Edit":
+        return f"{inp.get('file_path', '')}\n{_lines('- ', inp.get('old_string', ''))}\n{_lines('+ ', inp.get('new_string', ''))}"
+    if name == "MultiEdit":
+        parts = [inp.get("file_path", "")]
+        for e in inp.get("edits") or []:
+            parts += [_lines("- ", e.get("old_string", "")), _lines("+ ", e.get("new_string", "")), ""]
+        return "\n".join(parts)
+    if name == "Write":
+        return f"{inp.get('file_path', '')}\n{_lines('+ ', inp.get('content', ''))}"
+    if name == "TodoWrite":
+        mark = {"completed": "✓", "in_progress": "▸"}
+        return "\n".join(f"{mark.get(t.get('status'), '·')} {t.get('content', '')}" for t in inp.get("todos") or [])
+    return json.dumps(inp, ensure_ascii=False, indent=1)
 
 
 def items(lines: list[bytes]) -> list[dict]:
@@ -171,8 +196,9 @@ def items(lines: list[bytes]) -> list[dict]:
                 if x.get("type") == "text" and x.get("text", "").strip():
                     out.append({"k": "text", "text": x["text"], "ts": ts})
                 elif x.get("type") == "tool_use":
-                    out.append({"k": "tool", "id": x.get("id"), "name": x.get("name", ""),
-                                "input": _tool_input(x.get("name", ""), x.get("input") or {}), "ts": ts})
+                    name, inp = x.get("name", ""), x.get("input") or {}
+                    out.append({"k": "tool", "id": x.get("id"), "name": name, "input": _tool_input(name, inp),
+                                "detail": _tool_detail(name, inp)[:MAX_RESULT], "ts": ts})
         elif t == "system" and d.get("subtype") == "away_summary" and d.get("content"):
             out.append({"k": "summary", "text": d["content"], "ts": ts})
         elif t == "system" and d.get("subtype") == "turn_duration":

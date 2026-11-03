@@ -1925,6 +1925,10 @@ function sendText(text, execute) {
   if (!c) return toast('먼저 세션을 선택하세요');
   if (text) c.term.paste(text);
   if (execute) setTimeout(() => c.send({ type: 'input', data: '\r' }), text ? 50 : 0);
+  if (chatOn(c)) {
+    c.chat.stick = true;
+    setTimeout(() => pollChat(c), 700);
+  }
 }
 
 function sendIme(execute) {
@@ -1987,14 +1991,37 @@ function initChat(conn) {
   ch.state = ch.el.querySelector('.cstate');
   ch.ask = ch.el.querySelector('.cask');
   ch.more.onclick = () => loadOlder(conn);
+  ch.list.addEventListener('scroll', () => {
+    ch.atBottom = ch.list.scrollHeight - ch.list.scrollTop - ch.list.clientHeight < 80;
+    if (ch.list.scrollTop < 60 && !ch.more.hidden) loadOlder(conn);
+  });
+  new ResizeObserver(() => { if (ch.atBottom !== false) ch.list.scrollTop = ch.list.scrollHeight; }).observe(ch.list);
   ch.el.querySelector('.cstop').onclick = () => conn.send({ type: 'input', data: keySeq('esc') });
   ch.el.querySelector('.cterm').onclick = () => setChatView(conn.name, false);
   keepFocus(ch.el);
 }
 
 function setMd(d, text) {
-  if (window.marked && window.DOMPurify) d.innerHTML = DOMPurify.sanitize(marked.parse(text));
-  else d.textContent = text;
+  if (!(window.marked && window.DOMPurify)) {
+    d.textContent = text;
+    return;
+  }
+  d.innerHTML = DOMPurify.sanitize(marked.parse(text));
+  if (window.hljs) for (const c of d.querySelectorAll('pre code')) hljs.highlightElement(c);
+}
+
+const hhmm = (ts) => (ts ? new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '');
+
+function setDetail(pre, it) {
+  pre.textContent = '';
+  const diff = ['Edit', 'MultiEdit', 'Write'].includes(it.name);
+  for (const line of (it.detail || it.input).split('\n')) {
+    const span = document.createElement('span');
+    if (diff && line.startsWith('- ')) span.className = 'del';
+    else if (diff && line.startsWith('+ ')) span.className = 'add';
+    span.textContent = line + '\n';
+    pre.appendChild(span);
+  }
 }
 
 function attachResult(t, r) {
@@ -2007,6 +2034,11 @@ function chatNode(ch, it) {
   if (it.k === 'user') {
     d.className = 'cu';
     d.textContent = it.text;
+    d.title = hhmm(it.ts);
+    if (it.text.split('\n').length > 12 || it.text.length > 1200) {
+      d.classList.add('long');
+      d.onclick = () => d.classList.toggle('long');
+    }
   } else if (it.k === 'text') {
     d.className = 'ca md';
     setMd(d, it.text);
@@ -2015,7 +2047,7 @@ function chatNode(ch, it) {
     d.innerHTML = '<details><summary><span class="tn"></span><span class="ti"></span></summary><pre class="tin"></pre><pre class="tout"></pre></details>';
     d.querySelector('.tn').textContent = it.name;
     d.querySelector('.ti').textContent = it.input.split('\n')[0];
-    d.querySelector('.tin').textContent = it.input;
+    setDetail(d.querySelector('.tin'), it);
     ch.tools.set(it.id, d);
     const r = ch.orphans.get(it.id);
     if (r) {
@@ -2035,7 +2067,7 @@ function chatNode(ch, it) {
     d.textContent = it.text;
   } else if (it.k === 'turn') {
     d.className = 'cd';
-    d.textContent = `— 완료 · ${dur(it.ms)} —`;
+    d.textContent = `— 완료 · ${dur(it.ms)} · ${hhmm(it.ts)} —`;
   } else {
     return null;
   }
@@ -2104,7 +2136,8 @@ async function pollChat(conn) {
       ch.start = r.start;
     }
     const l = ch.list;
-    const stick = first || l.scrollHeight - l.scrollTop - l.clientHeight < 80;
+    const stick = first || ch.stick || l.scrollHeight - l.scrollTop - l.clientHeight < 80;
+    ch.stick = false;
     ch.end = r.end;
     for (const it of r.items) {
       const n = chatNode(ch, it);

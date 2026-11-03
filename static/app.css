@@ -353,3 +353,6 @@ a.btn:hover { border-color:var(--accent); }
 .copt .od:empty { display:none; }
 .preview.said { font:12px/1.45 system-ui, sans-serif; color:#b3b7bf; background:none; padding:0 2px; }
 .preview.said div { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.cu.long { max-height:14em; overflow:hidden; cursor:pointer; -webkit-mask-image:linear-gradient(#000 70%, transparent); mask-image:linear-gradient(#000 70%, transparent); }
+.ct .tin .del { color:var(--err); }
+.ct .tin .add { color:var(--ok); }
