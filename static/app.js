@@ -110,6 +110,7 @@ async function refresh() {
   renderList();
   renderTabs();
   renderWinbar();
+  syncChats();
 }
 
 function sortSessions(list) {
@@ -443,6 +444,7 @@ function sessionItem(s, inGroup, depth = 0) {
   dot.classList.toggle('on', s.attached > 0);
   dot.title = `접속한 클라이언트 ${s.attached}`;
   li.querySelector('.name').textContent = s.name;
+  li.querySelector('.name').classList.toggle('claude', !!s.claude);
   const badge = li.querySelector('.badge');
   if (s.state) {
     badge.className = `badge st-${s.state}`;
@@ -902,7 +904,10 @@ function createConn(name) {
   msg.hidden = true;
   const host = document.createElement('div');
   host.className = 'phost';
-  el.append(msg, host);
+  const chatEl = document.createElement('div');
+  chatEl.className = 'chat';
+  chatEl.hidden = true;
+  el.append(msg, host, chatEl);
   $('paneholder').appendChild(el);
 
   const term = new Terminal({
@@ -917,7 +922,9 @@ function createConn(name) {
     name, el, msg, host, term, fit,
     ws: null, opened: false, closed: false, gone: false, scrolled: false,
     retry: 0, timer: null, lastRx: 0,
+    chat: { el: chatEl, sid: null, start: 0, end: null, tools: new Map(), orphans: new Map(), timer: null, busy: false },
   };
+  initChat(conn);
   conn.raw = (obj) => {
     if (conn.ws && conn.ws.readyState === WebSocket.OPEN) conn.ws.send(JSON.stringify(obj));
   };
@@ -1755,6 +1762,7 @@ function layout() {
   }
   renderTabs();
   renderWinbar();
+  syncChats();
 }
 
 function renderTabs() {
@@ -1899,7 +1907,7 @@ const ime = $('ime');
 
 function setIme(on, focus = true) {
   imeOn = !!on;
-  $('imebar').hidden = !imeOn;
+  $('imebar').hidden = !imeOn && !chatActive();
   $('imetoggle').classList.toggle('on', imeOn);
   LS.set('imeOn', imeOn);
   if (!focus) return;
@@ -1942,7 +1950,7 @@ ime.addEventListener('keydown', (e) => {
     sendIme(!(e.ctrlKey || e.metaKey));
   } else if (e.key === 'Escape') {
     e.preventDefault();
-    c?.term.focus();
+    if (chatActive()) ime.blur(); else c?.term.focus();
   } else if (!ime.value && c && (e.key === 'Backspace' || e.key.startsWith('Arrow') || e.key === 'Tab')) {
     e.preventDefault();
     const keys = { Backspace: 'bs', Tab: 'tab', ArrowUp: 'up', ArrowDown: 'down', ArrowRight: 'right', ArrowLeft: 'left' };
@@ -1960,6 +1968,178 @@ ime.addEventListener('paste', (e) => {
 
 $('imesend').onclick = () => sendIme(true);
 $('imetoggle').onclick = () => setIme(!imeOn);
+
+const chatPref = LS.get('chatViews', {});
+const isClaude = (name) => !!sessions.find((s) => s.name === name)?.claude;
+const wantChat = (name) => chatPref[name] ?? (narrow.matches || matchMedia('(pointer: coarse)').matches);
+const chatOn = (c) => !!c && isClaude(c.name) && wantChat(c.name);
+const chatActive = () => chatOn(active());
+const dur = (ms) => (ms >= 60000 ? `${Math.floor(ms / 60000)}분 ${Math.round((ms % 60000) / 1000)}초` : `${Math.round(ms / 1000)}초`);
+
+function initChat(conn) {
+  const ch = conn.chat;
+  ch.el.innerHTML = `<div class="clist"><button class="cmore" hidden>이전 대화 더 보기</button><div class="citems"></div></div>
+    <div class="cstate" hidden><span class="ctext"></span><button class="cstop">중단 (Esc)</button><button class="cterm">터미널 보기</button></div>`;
+  ch.list = ch.el.querySelector('.clist');
+  ch.items = ch.el.querySelector('.citems');
+  ch.more = ch.el.querySelector('.cmore');
+  ch.state = ch.el.querySelector('.cstate');
+  ch.more.onclick = () => loadOlder(conn);
+  ch.el.querySelector('.cstop').onclick = () => conn.send({ type: 'input', data: keySeq('esc') });
+  ch.el.querySelector('.cterm').onclick = () => setChatView(conn.name, false);
+  keepFocus(ch.el);
+}
+
+function setMd(d, text) {
+  if (window.marked && window.DOMPurify) d.innerHTML = DOMPurify.sanitize(marked.parse(text));
+  else d.textContent = text;
+}
+
+function attachResult(t, r) {
+  t.classList.add(r.error ? 'err' : 'ok');
+  t.querySelector('.tout').textContent = (r.text || '(출력 없음)') + (r.cut ? '\n…(잘림)' : '');
+}
+
+function chatNode(ch, it) {
+  const d = document.createElement('div');
+  if (it.k === 'user') {
+    d.className = 'cu';
+    d.textContent = it.text;
+  } else if (it.k === 'text') {
+    d.className = 'ca md';
+    setMd(d, it.text);
+  } else if (it.k === 'tool') {
+    d.className = 'ct';
+    d.innerHTML = '<details><summary><span class="tn"></span><span class="ti"></span></summary><pre class="tin"></pre><pre class="tout"></pre></details>';
+    d.querySelector('.tn').textContent = it.name;
+    d.querySelector('.ti').textContent = it.input.split('\n')[0];
+    d.querySelector('.tin').textContent = it.input;
+    ch.tools.set(it.id, d);
+    const r = ch.orphans.get(it.id);
+    if (r) {
+      attachResult(d, r);
+      ch.orphans.delete(it.id);
+    }
+  } else if (it.k === 'result') {
+    const t = ch.tools.get(it.id);
+    if (t) attachResult(t, it); else ch.orphans.set(it.id, it);
+    return null;
+  } else if (it.k === 'note') {
+    d.className = 'cn';
+    d.textContent = `🔔 ${it.text}`;
+    d.title = it.text;
+  } else if (it.k === 'summary') {
+    d.className = 'cs';
+    d.textContent = it.text;
+  } else if (it.k === 'turn') {
+    d.className = 'cd';
+    d.textContent = `— 완료 · ${dur(it.ms)} —`;
+  } else {
+    return null;
+  }
+  return d;
+}
+
+function clearChat(ch) {
+  ch.items.innerHTML = '';
+  ch.tools.clear();
+  ch.orphans.clear();
+  ch.end = null;
+}
+
+function showChatState(ch, state) {
+  ch.state.hidden = state !== 'working' && state !== 'waiting';
+  ch.state.querySelector('.ctext').textContent = state === 'waiting' ? '확인을 기다립니다 — 터미널에서 고릅니다' : '작업 중…';
+  ch.state.querySelector('.cstop').hidden = state !== 'working';
+  ch.state.querySelector('.cterm').hidden = state !== 'waiting';
+}
+
+const chatUrl = (conn, q) => `/sessions/${encodeURIComponent(conn.name)}/chat?sid=${conn.chat.sid || ''}${q}`;
+
+async function pollChat(conn) {
+  const ch = conn.chat;
+  if (ch.busy) return;
+  ch.busy = true;
+  try {
+    await loadViewerLibs().catch(() => {});
+    const r = await api('GET', chatUrl(conn, ch.end == null ? '' : `&after=${ch.end}`));
+    if (!r.claude) return;
+    const first = ch.end == null || r.sid !== ch.sid || r.reset;
+    if (first) {
+      clearChat(ch);
+      ch.sid = r.sid;
+      ch.start = r.start;
+    }
+    const l = ch.list;
+    const stick = first || l.scrollHeight - l.scrollTop - l.clientHeight < 80;
+    ch.end = r.end;
+    for (const it of r.items) {
+      const n = chatNode(ch, it);
+      if (n) ch.items.appendChild(n);
+    }
+    ch.more.hidden = ch.start <= 0;
+    showChatState(ch, r.state);
+    if (stick) l.scrollTop = l.scrollHeight;
+  } catch {
+  } finally {
+    ch.busy = false;
+  }
+}
+
+async function loadOlder(conn) {
+  const ch = conn.chat;
+  if (ch.start <= 0 || ch.busy) return;
+  ch.busy = true;
+  try {
+    const r = await api('GET', chatUrl(conn, `&before=${ch.start}`));
+    if (!r.claude || r.sid !== ch.sid) return;
+    const h = ch.list.scrollHeight;
+    const frag = document.createDocumentFragment();
+    for (const it of r.items) {
+      const n = chatNode(ch, it);
+      if (n) frag.appendChild(n);
+    }
+    ch.items.prepend(frag);
+    ch.start = r.start;
+    ch.more.hidden = ch.start <= 0;
+    ch.list.scrollTop += ch.list.scrollHeight - h;
+  } catch (e) {
+    toast('대화 불러오기 실패: ' + e.message);
+  } finally {
+    ch.busy = false;
+  }
+}
+
+function syncChats() {
+  const vis = new Set(visibleNames());
+  for (const c of conns.values()) {
+    const on = vis.has(c.name) && chatOn(c);
+    c.chat.el.hidden = !on;
+    if (on && !c.chat.timer) {
+      pollChat(c);
+      c.chat.timer = setInterval(() => { if (document.visibilityState === 'visible') pollChat(c); }, 1500);
+    } else if (!on && c.chat.timer) {
+      clearInterval(c.chat.timer);
+      c.chat.timer = null;
+    }
+  }
+  const a = active();
+  const btn = $('chatview');
+  btn.hidden = !a || !isClaude(a.name);
+  btn.classList.toggle('on', chatOn(a));
+  btn.textContent = chatOn(a) ? '⌨' : '💬';
+  btn.title = chatOn(a) ? '터미널 보기' : '대화 보기 (Claude Code)';
+  $('imebar').hidden = !imeOn && !chatActive();
+}
+
+function setChatView(name, on) {
+  chatPref[name] = on;
+  LS.set('chatViews', chatPref);
+  syncChats();
+  if (!on && !narrow.matches) conns.get(name)?.term.focus();
+}
+
+$('chatview').onclick = () => { const a = active(); if (a) setChatView(a.name, !chatOn(a)); };
 
 function setCtrl(on) {
   ctrlArmed = on;

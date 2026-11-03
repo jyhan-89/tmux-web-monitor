@@ -31,6 +31,7 @@ from pydantic import BaseModel
 from send2trash import send2trash
 
 import auth
+import chat
 import push
 import store
 from tmuxctl import capture, list_sessions, session_exists, tmux, valid_name
@@ -240,6 +241,7 @@ def api_version():
 @api.get("/sessions")
 def api_sessions():
     sessions = list_sessions()
+    live = chat.live_sessions()
     group_of = store.group_of()
     company_of = store.company_of()
     for s in sessions:
@@ -248,6 +250,7 @@ def api_sessions():
         st = push.status.get(s["name"], {})
         s["state"] = st.get("state", "")
         s["preview"] = st.get("preview", [])
+        s["claude"] = any(p["id"] in live for w in s["windows"] for p in w["panes"])
     return sessions
 
 
@@ -342,6 +345,20 @@ def api_kill_pane(name: str, window: int, pane: int):
 def api_capture(name: str, lines: int = 2000):
     s = find_session(name)
     return {"text": capture(s["pane_id"], history=max(0, min(lines, 50000)))}
+
+
+@api.get("/sessions/{name}/chat")
+def api_chat(name: str, after: int | None = None, before: int | None = None, sid: str = ""):
+    find_session(name)
+    sess = chat.find(name)
+    path = sess and chat.transcript(sess)
+    if not path:
+        return {"claude": False}
+    if sid != sess["sessionId"]:
+        after = before = None
+    st = push.status.get(name, {})
+    return {"claude": True, "sid": sess["sessionId"], "pane": sess["pane"], "state": st.get("state", ""),
+            **chat.read(path, after, before)}
 
 
 @api.post("/sessions/{name}/upload")
