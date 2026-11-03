@@ -2231,6 +2231,15 @@ function setChatView(name, on) {
   if (!on && !narrow.matches) conns.get(name)?.term.focus();
 }
 
+function setBarHidden(on) {
+  document.body.classList.toggle('barhide', on);
+  LS.set('barHidden', on);
+}
+setBarHidden(LS.get('barHidden', false));
+$('barhide').onclick = () => setBarHidden(true);
+$('barshow').onclick = () => setBarHidden(false);
+$('peekmenu').onclick = () => $('menu').click();
+
 $('chatview').onclick = () => { const a = active(); if (a) setChatView(a.name, !chatOn(a)); };
 
 function setCtrl(on) {

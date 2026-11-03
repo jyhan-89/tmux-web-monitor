@@ -358,3 +358,9 @@ a.btn:hover { border-color:var(--accent); }
 .ct .tin .add { color:var(--ok); }
 .cwarn { display:flex; gap:8px; align-items:center; justify-content:center; padding:6px 10px; background:rgba(240,179,90,.15); color:var(--warn); font-size:13px; border-bottom:1px solid var(--line); }
 .cwarn[hidden] { display:none; }
+main { position:relative; }
+#barpeek { display:none; position:absolute; top:4px; right:6px; z-index:8; gap:4px; opacity:.6; }
+#barpeek:hover, #barpeek:active { opacity:1; }
+#barpeek button { padding:3px 9px; background:rgba(52,55,61,.92); }
+body.barhide #bar, body.barhide #winbar { display:none !important; }
+body.barhide #barpeek { display:flex; }
