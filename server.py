@@ -356,9 +356,27 @@ def api_chat(name: str, after: int | None = None, before: int | None = None, sid
         return {"claude": False}
     if sid != sess["sessionId"]:
         after = before = None
-    st = push.status.get(name, {})
-    return {"claude": True, "sid": sess["sessionId"], "pane": sess["pane"], "state": st.get("state", ""),
+    state, ask = chat.screen(sess["pane"])
+    return {"claude": True, "sid": sess["sessionId"], "pane": sess["pane"], "state": state, "prompt": ask,
             **chat.read(path, after, before)}
+
+
+class Choose(BaseModel):
+    n: int
+    label: str
+
+
+@api.post("/sessions/{name}/choose")
+def api_choose(name: str, body: Choose):
+    find_session(name)
+    sess = chat.find(name)
+    if not sess:
+        raise HTTPException(409, "Claude가 떠 있지 않습니다")
+    try:
+        chat.choose(sess["pane"], body.n, body.label)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return {"ok": True}
 
 
 @api.post("/sessions/{name}/upload")

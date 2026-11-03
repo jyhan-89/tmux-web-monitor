@@ -3,13 +3,14 @@ import os
 import re
 from pathlib import Path
 
-from tmuxctl import tmux
+from tmuxctl import BOX_BORDER, CLAUDE_WAITING, analyze, capture, tmux
 
 CLAUDE_HOME = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
 TAIL = 1_500_000
 MAX_READ = 4_000_000
 MAX_RESULT = 4000
 HOOK = re.compile(r"(Stop hook feedback\s*)?\S+ hook blocking error from command \"\w+\":\s*")
+OPTION = re.compile(r"^\s*(❯)?\s*(\d+)\.\s+(.+?)\s*$")
 TAG = re.compile(r"<(system-reminder|task-notification)>.*?</\1>", re.S)
 
 
@@ -161,3 +162,60 @@ def read(path: Path, after: int | None = None, before: int | None = None) -> dic
         end = start + cut
     buf = buf[:cut] if before is None else buf
     return {"start": start, "end": end, "items": items(buf.splitlines()), "reset": after is not None and start != after}
+
+
+def _strip(line: str) -> str:
+    return line.strip().strip("│").rstrip()
+
+
+def prompt(text: str) -> dict | None:
+    lines = [_strip(x) for x in text.splitlines()[-60:]]
+    if not CLAUDE_WAITING.search("\n".join(lines[-30:])):
+        return None
+    start = None
+    for i in range(len(lines) - 1, -1, -1):
+        m = OPTION.match(lines[i])
+        if m and m.group(2) == "1":
+            start = i
+            break
+    if start is None:
+        return None
+    opts, cur = [], 0
+    for line in lines[start:]:
+        m = OPTION.match(line)
+        if m and int(m.group(2)) == len(opts) + 1:
+            if m.group(1):
+                cur = len(opts) + 1
+            opts.append({"n": len(opts) + 1, "label": m.group(3), "desc": ""})
+        elif line.strip() and opts and line.startswith((" ", "\t")) and not opts[-1]["desc"]:
+            opts[-1]["desc"] = line.strip()
+        elif not line.strip() or not opts:
+            continue
+        else:
+            break
+    if len(opts) < 2 or not cur:
+        return None
+    top = 0
+    for i in range(start - 1, -1, -1):
+        if BOX_BORDER.match(lines[i]) or lines[i].strip().startswith(("╭", "╰")):
+            top = i + 1
+            break
+    body = [x.strip() for x in lines[top:start] if x.strip()][-15:]
+    return {"body": "\n".join(body), "options": opts, "cur": cur}
+
+
+def screen(pane: str) -> tuple[str, dict | None]:
+    text = capture(pane)
+    state, _ = analyze("claude", text)
+    return state, prompt(text) if state == "waiting" else None
+
+
+def choose(pane: str, n: int, label: str) -> None:
+    p = prompt(capture(pane))
+    if not p or not any(o["n"] == n and o["label"] == label for o in p["options"]):
+        raise ValueError("선택지가 바뀌었습니다 — 화면을 다시 확인하세요")
+    d = n - p["cur"]
+    keys = ["Down"] * d if d > 0 else ["Up"] * -d
+    r = tmux("send-keys", "-t", pane, *keys, "Enter")
+    if r.returncode != 0:
+        raise ValueError(r.stderr.strip() or "tmux 명령 실패")

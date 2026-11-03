@@ -1979,11 +1979,12 @@ const dur = (ms) => (ms >= 60000 ? `${Math.floor(ms / 60000)}분 ${Math.round((m
 function initChat(conn) {
   const ch = conn.chat;
   ch.el.innerHTML = `<div class="clist"><button class="cmore" hidden>이전 대화 더 보기</button><div class="citems"></div></div>
-    <div class="cstate" hidden><span class="ctext"></span><button class="cstop">중단 (Esc)</button><button class="cterm">터미널 보기</button></div>`;
+    <div class="cstate" hidden><div class="cask" hidden></div><span class="ctext"></span><button class="cstop">중단 (Esc)</button><button class="cterm">터미널 보기</button></div>`;
   ch.list = ch.el.querySelector('.clist');
   ch.items = ch.el.querySelector('.citems');
   ch.more = ch.el.querySelector('.cmore');
   ch.state = ch.el.querySelector('.cstate');
+  ch.ask = ch.el.querySelector('.cask');
   ch.more.onclick = () => loadOlder(conn);
   ch.el.querySelector('.cstop').onclick = () => conn.send({ type: 'input', data: keySeq('esc') });
   ch.el.querySelector('.cterm').onclick = () => setChatView(conn.name, false);
@@ -2047,11 +2048,42 @@ function clearChat(ch) {
   ch.end = null;
 }
 
-function showChatState(ch, state) {
+function showChatState(conn, state, ask) {
+  const ch = conn.chat;
   ch.state.hidden = state !== 'working' && state !== 'waiting';
-  ch.state.querySelector('.ctext').textContent = state === 'waiting' ? '확인을 기다립니다 — 터미널에서 고릅니다' : '작업 중…';
+  ch.state.querySelector('.ctext').textContent = state === 'waiting' ? (ask ? '' : '확인을 기다립니다 — 터미널에서 고릅니다') : '작업 중…';
   ch.state.querySelector('.cstop').hidden = state !== 'working';
   ch.state.querySelector('.cterm').hidden = state !== 'waiting';
+  const key = ask ? JSON.stringify(ask) : '';
+  if (key === ch.askKey) return;
+  ch.askKey = key;
+  ch.ask.innerHTML = '';
+  ch.ask.hidden = !ask;
+  ch.state.classList.toggle('asking', !!ask);
+  if (!ask) return;
+  const body = document.createElement('div');
+  body.className = 'cabody';
+  body.textContent = ask.body;
+  ch.ask.appendChild(body);
+  for (const o of ask.options) {
+    const b = document.createElement('button');
+    b.className = `copt${o.n === ask.cur ? ' cur' : ''}`;
+    b.innerHTML = '<span class="on"></span><span class="ol"></span><span class="od"></span>';
+    b.querySelector('.on').textContent = `${o.n}.`;
+    b.querySelector('.ol').textContent = o.label;
+    b.querySelector('.od').textContent = o.desc;
+    b.onclick = async () => {
+      for (const x of ch.ask.querySelectorAll('button')) x.disabled = true;
+      try {
+        await api('POST', `/sessions/${encodeURIComponent(conn.name)}/choose`, { n: o.n, label: o.label });
+      } catch (e) {
+        toast(e.message);
+        ch.askKey = null;
+      }
+      setTimeout(() => pollChat(conn), 400);
+    };
+    ch.ask.appendChild(b);
+  }
 }
 
 const chatUrl = (conn, q) => `/sessions/${encodeURIComponent(conn.name)}/chat?sid=${conn.chat.sid || ''}${q}`;
@@ -2078,7 +2110,7 @@ async function pollChat(conn) {
       if (n) ch.items.appendChild(n);
     }
     ch.more.hidden = ch.start <= 0;
-    showChatState(ch, r.state);
+    showChatState(conn, r.state, r.prompt);
     if (stick) l.scrollTop = l.scrollHeight;
   } catch {
   } finally {
