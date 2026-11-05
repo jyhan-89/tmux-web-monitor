@@ -2017,6 +2017,28 @@ function setMd(d, text) {
   }
   d.innerHTML = DOMPurify.sanitize(marked.parse(text));
   if (window.hljs) for (const c of d.querySelectorAll('pre code')) hljs.highlightElement(c);
+  addCopyButtons(d);
+}
+
+function addCopyButtons(root) {
+  for (const pre of root.querySelectorAll('pre')) {
+    if (pre.parentElement.classList.contains('cpw')) continue;
+    const w = document.createElement('div');
+    w.className = 'cpw';
+    pre.replaceWith(w);
+    w.appendChild(pre);
+    const b = document.createElement('button');
+    b.className = 'cpb';
+    b.textContent = '복사';
+    b.onclick = (e) => {
+      e.stopPropagation();
+      copyText(pre.innerText.replace(/\n$/, '')).then((ok) => {
+        b.textContent = ok ? '복사됨' : '실패';
+        setTimeout(() => (b.textContent = '복사'), 1200);
+      });
+    };
+    w.appendChild(b);
+  }
 }
 
 const hhmm = (ts) => (ts ? new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '');
@@ -3396,6 +3418,7 @@ function renderFile() {
     div.innerHTML = DOMPurify.sanitize(marked.parse(fb.text));
     fixMdLinks(div, fb.file);
     if (window.hljs) div.querySelectorAll('pre code').forEach((el) => { try { hljs.highlightElement(el); } catch {} });
+    addCopyButtons(div);
     body.appendChild(div);
   } else {
     body.appendChild(codeView(fb.text, MD_EXT.test(name) ? 'markdown' : langOf(name)));
