@@ -368,7 +368,7 @@ main { position:relative; }
 body.barhide #bar, body.barhide #winbar { display:none !important; }
 body.barhide #barpeek { display:flex; }
 @media (max-width:768px) { #bar, #tools { gap:4px; } #tabs, #tools { flex:1 1 0; } #tools > :first-child { margin-left:auto; } #tabs:empty + #tools { flex:1 1 auto; } }
-.cpw { position:relative; }
-.cpb { position:absolute; top:4px; right:4px; padding:2px 8px; font-size:12px; opacity:.55; background:#2a2c31; color:inherit; border:1px solid var(--line); border-radius:4px; cursor:pointer; }
-.cpw:hover .cpb, .cpb:focus { opacity:1; }
-@media (pointer:coarse) { .cpb { opacity:.9; padding:4px 10px; } }
+.cpw { display:flex; flex-direction:column; align-items:flex-end; margin:6px 0; }
+.cpw > pre { align-self:stretch; margin-top:0; }
+.cpb { order:-1; padding:1px 10px; margin-bottom:2px; font-size:12px; background:#2a2c31; color:inherit; border:1px solid var(--line); border-radius:4px; cursor:pointer; }
+@media (pointer:coarse) { .cpb { padding:4px 12px; } }
