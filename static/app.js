@@ -1036,6 +1036,7 @@ function createConn(name) {
     }, 0);
   });
   new ResizeObserver(() => fitConn(conn)).observe(el);
+  makeBar(conn);
 
   connectWs(conn);
   return conn;
@@ -1538,7 +1539,7 @@ function syncDraft() {
 function focusInput() {
   const c = active();
   if (!c || narrow.matches) return;
-  if (imeOn) $('ime').focus(); else c.term.focus();
+  if (imeOn) boxOf(c).focus(); else c.term.focus();
 }
 
 let gidSeq = 0;
@@ -1982,29 +1983,92 @@ async function newWindow(name) {
 
 const ime = $('ime');
 
+const perPane = () => !narrow.matches && imeOn;
+const boxOf = (c) => (perPane() && c?.box) || ime;
+
+function updateBars() {
+  const on = perPane();
+  for (const c of conns.values()) c.el.classList.toggle('hasbar', on);
+  $('imebar').hidden = on || (!imeOn && !chatActive());
+}
+
 function setIme(on, focus = true) {
   imeOn = !!on;
-  $('imebar').hidden = !imeOn && !chatActive();
+  updateBars();
   $('imetoggle').classList.toggle('on', imeOn);
   LS.set('imeOn', imeOn);
   if (!focus) return;
-  if (imeOn) ime.focus(); else active()?.term.focus();
+  if (imeOn) boxOf(active()).focus(); else active()?.term.focus();
 }
+
+function growBox(c) {
+  const b = c.box;
+  b.style.height = 'auto';
+  b.style.height = b.scrollHeight + 2 + 'px';
+  c.el.style.setProperty('--pbar-h', `${c.bar.offsetHeight}px`);
+}
+
+function sendBox(c, execute) {
+  const text = c.box.value;
+  c.box.value = '';
+  growBox(c);
+  sendText(text, execute, c);
+}
+
+function makeBar(conn) {
+  const bar = document.createElement('div');
+  bar.className = 'pbar';
+  bar.innerHTML = '<button class="pattach" title="파일 올리기 (이 칸 세션의 작업 폴더)">📎</button><textarea rows="1"></textarea><button class="psend" title="전송+실행">전송</button>';
+  conn.el.appendChild(bar);
+  conn.bar = bar;
+  const box = bar.querySelector('textarea');
+  conn.box = box;
+  box.placeholder = `${conn.name} 에 입력 — Enter: 전송+실행 · Shift+Enter: 줄바꿈 · Ctrl+Enter: 전송만 · Esc: 터미널로`;
+  bar.addEventListener('mousedown', (e) => { e.stopPropagation(); if (activeName !== conn.name) activate(conn.name, false); });
+  box.addEventListener('focus', () => { if (activeName !== conn.name) activate(conn.name, false); });
+  box.addEventListener('input', () => growBox(conn));
+  box.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendBox(conn, !(e.ctrlKey || e.metaKey));
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (chatOn(conn)) box.blur(); else conn.term.focus();
+    } else if (!box.value && (e.key === 'Backspace' || e.key.startsWith('Arrow') || e.key === 'Tab')) {
+      e.preventDefault();
+      const keys = { Backspace: 'bs', Tab: 'tab', ArrowUp: 'up', ArrowDown: 'down', ArrowRight: 'right', ArrowLeft: 'left' };
+      conn.send({ type: 'input', data: keySeq(keys[e.key]) });
+    }
+  });
+  box.addEventListener('paste', (e) => {
+    const files = [...(e.clipboardData?.files || [])];
+    if (files.length) {
+      e.preventDefault();
+      uploadFiles(files, conn);
+    }
+  });
+  bar.querySelector('.psend').onclick = () => sendBox(conn, true);
+  bar.querySelector('.pattach').onclick = () => { activate(conn.name, false); $('file').click(); };
+  conn.el.classList.toggle('hasbar', perPane());
+  requestAnimationFrame(() => growBox(conn));
+}
+
+narrow.addEventListener('change', updateBars);
 
 function autoGrow() {
   ime.style.height = 'auto';
   ime.style.height = ime.scrollHeight + 2 + 'px';
 }
 
-function sendText(text, execute) {
-  const c = active();
+function sendText(text, execute, c = active()) {
   if (!c) return toast('먼저 세션을 선택하세요');
   if (c.chat.draft && chatOn(c) && !sessionOf(c.name)?.sleeping && !c.chat.conv) {
     const d = c.chat.draft;
     c.chat.draft = '';
     return api('POST', `/sessions/${enc(c.name)}/clear-input`).then(() => {
       toast(`Claude 입력창에 남아 있던 글을 지우고 보냈습니다: ${d.slice(0, 40)}`, 4000);
-      sendText(text, execute);
+      sendText(text, execute, c);
     }, (e) => toast(e.message, 5000));
   }
   if (sessionOf(c.name)?.sleeping || c.chat.conv) {
@@ -2301,17 +2365,17 @@ async function pollChat(conn) {
 
 async function pullDraft(conn, text) {
   conn.chat.draft = text;
-  if (!text || conn.chat.pulling || activeName !== conn.name || !chatOn(conn)) return;
-  const box = $('ime');
-  if (box.value.trim() || (draftOwner && draftOwner !== conn.name)) return;
+  const box = boxOf(conn);
+  const global = box === ime;
+  if (!text || conn.chat.pulling || !chatOn(conn) || (global && activeName !== conn.name)) return;
+  if (box.value.trim() || (global && draftOwner && draftOwner !== conn.name)) return;
   conn.chat.pulling = true;
   try {
     await api('POST', `/sessions/${enc(conn.name)}/clear-input`);
-    if (box.value.trim() || activeName !== conn.name) return;
+    if (box.value.trim() || (global && activeName !== conn.name)) return;
     setIme(true, false);
     box.value = text;
-    draftOwner = conn.name;
-    autoGrow();
+    if (global) { draftOwner = conn.name; autoGrow(); } else growBox(conn);
     conn.chat.draft = '';
     toast('Claude 입력창에 남아 있던 글을 가져왔습니다 — 고쳐서 보내세요', 4000);
   } catch {
@@ -2363,7 +2427,7 @@ function syncChats() {
   btn.classList.toggle('on', chatOn(a));
   btn.textContent = chatOn(a) ? '⌨' : '💬';
   btn.title = chatOn(a) ? '터미널 보기' : '대화 보기 (Claude Code)';
-  $('imebar').hidden = !imeOn && !chatActive();
+  updateBars();
 }
 
 function setChatView(name, on) {
@@ -2499,8 +2563,7 @@ $('snipdlg').addEventListener('close', async () => {
   }
 });
 
-async function uploadFiles(files) {
-  const c = active();
+async function uploadFiles(files, c = active()) {
   if (!c) return toast('먼저 세션을 선택하세요');
   const paths = [];
   for (const f of files) {
@@ -2515,9 +2578,11 @@ async function uploadFiles(files) {
   }
   toast(`업로드 완료 → ${paths.join(', ')}`, 4000);
   setIme(true, false);
-  if (ime.value && !/\s$/.test(ime.value)) ime.value += ' ';
-  ime.value += paths.join(' ') + ' ';
-  autoGrow();
+  const box = boxOf(c);
+  if (box === ime && draftOwner === null) draftOwner = c.name;
+  if (box.value && !/\s$/.test(box.value)) box.value += ' ';
+  box.value += paths.join(' ') + ' ';
+  if (box === ime) autoGrow(); else growBox(c);
 }
 
 $('attach').onclick = () => $('file').click();
