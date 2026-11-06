@@ -13,7 +13,7 @@ const LS = {
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
 };
 
-const STATE_LABEL = { working: '작업 중', waiting: '확인 필요', idle: '대기', running: '실행 중', shell: '셸', sleeping: '쉬는 중' };
+const STATE_LABEL = { working: '작업 중', waiting: '확인 필요', idle: '대기', running: '실행 중', shell: '셸', sleeping: '대기' };
 
 let sessions = [];
 let groups = [];
@@ -446,10 +446,10 @@ function sessionItem(s, inGroup, depth = 0) {
   li.querySelector('.name').textContent = s.name;
   li.querySelector('.name').classList.toggle('claude', !!s.claude);
   li.querySelector('.name').classList.toggle('sleeping', !!s.sleeping);
-  if (s.sleeping) li.querySelector('.name').title = '쉬는 중 — 입력하면 깨어납니다';
+  if (s.sleeping) li.querySelector('.name').title = '대기 — Claude는 닫혀 있고 입력하면 이어서 깨어납니다';
   const badge = li.querySelector('.badge');
   if (s.state) {
-    badge.className = `badge st-${s.state}`;
+    badge.className = `badge st-${s.state === 'sleeping' ? 'idle' : s.state}`;
     badge.textContent = STATE_LABEL[s.state];
   } else {
     badge.remove();
@@ -511,7 +511,7 @@ function sessionMenu(s) {
   );
   if (conns.has(s.name)) items.push({ label: '탭 닫기 (세션 유지)', run: () => closeSession(s.name) });
   if (s.section) {
-    items.push('-', { label: s.sleeping ? '쉬는 중 (입력하면 깨어남)' : 'Claude 닫기 (쉬게 하기)', disabled: s.sleeping, run: () => killSession(s.name) },
+    items.push('-', { label: s.sleeping ? '대기 중 (입력하면 깨어남)' : 'Claude 닫기 (쉬게 하기)', disabled: s.sleeping, run: () => killSession(s.name) },
       { label: '지난 대화 보기', run: () => openConversations(s.name) },
       { label: '섹션 삭제…', danger: true, run: () => deleteSection(s.name) });
     return items;
@@ -888,7 +888,7 @@ const sessionOf = (name) => sessions.find((x) => x.name === name);
 async function killSession(name) {
   if (sessionOf(name)?.section) {
     if (!confirm(`'${name}' 섹션의 Claude를 닫고 쉬게 할까요? 세션과 대화는 남고, 요청이 오거나 입력하면 이전 대화로 깨어납니다.`)) return;
-    try { await api('DELETE', `/sessions/${enc(name)}`); toast('쉬는 중으로 바꿨습니다'); } catch (e) { toast(e.message); }
+    try { await api('DELETE', `/sessions/${enc(name)}`); toast('대기로 바꿨습니다'); } catch (e) { toast(e.message); }
     return refresh();
   }
   if (!confirm(`'${name}' 세션을 종료할까요? 실행 중인 작업이 모두 종료됩니다.`)) return;
@@ -2088,7 +2088,7 @@ function sendText(text, execute, c = active()) {
     }, (e) => toast(e.message, 5000));
   }
   if (sessionOf(c.name)?.sleeping || c.chat.conv) {
-    if (!execute || !text.trim()) return toast('쉬는 섹션입니다 — 보낼 글을 입력하면 그 글로 깨웁니다');
+    if (!execute || !text.trim()) return toast('대기 중인 섹션입니다 — 보낼 글을 입력하면 그 글로 깨웁니다');
     return wakeSection(c.name, text);
   }
   if (chatOn(c)) {
@@ -2312,7 +2312,7 @@ function showChatState(conn, state, ask) {
   const ch = conn.chat;
   ch.state.hidden = state !== 'working' && state !== 'waiting' && state !== 'sleeping';
   ch.state.classList.toggle('sleeping', state === 'sleeping');
-  ch.state.querySelector('.ctext').textContent = state === 'sleeping' ? (ch.conv ? '📜 지난 대화 (읽기만)' : '💤 쉬는 중 — 입력하면 이 대화로 깨어납니다')
+  ch.state.querySelector('.ctext').textContent = state === 'sleeping' ? (ch.conv ? '📜 지난 대화 (읽기만)' : '대기 — 입력하면 이 대화로 이어서 깨어납니다')
     : state === 'waiting' ? (ask ? '' : '확인을 기다립니다 — 터미널에서 고릅니다') : '작업 중…';
   ch.state.querySelector('.cstop').hidden = state !== 'working';
   ch.state.querySelector('.cterm').hidden = state !== 'waiting';
