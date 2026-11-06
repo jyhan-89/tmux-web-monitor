@@ -1979,12 +1979,21 @@ async function selectTarget(name, window, pane) {
 }
 
 async function newWindow(name) {
-  try { await api('POST', `/sessions/${enc(name)}/windows`); } catch (e) { return toast(e.message); }
-  const c = conns.get(name);
-  if (c && chatOn(c)) {
-    setChatView(name, false);
-    toast('새 창은 터미널 보기로 엽니다 — 💬 대화 보기는 그대로 Claude 창에 보냅니다', 3500);
+  const s = sessionOf(name);
+  if (s?.claude) {
+    let n = `${name}-sh`;
+    for (let i = 2; sessions.some((x) => x.name === n); i++) n = `${name}-sh${i}`;
+    try {
+      await api('POST', '/sessions', { name: n, cwd: s.path || null }).catch(() => api('POST', '/sessions', { name: n, cwd: null }));
+    } catch (e) {
+      return toast(e.message);
+    }
+    toast(`Claude 세션은 그대로 두고 bash 를 새 세션 ${n} 으로 엽니다`, 3500);
+    await refresh();
+    openSession(n);
+    return;
   }
+  try { await api('POST', `/sessions/${enc(name)}/windows`); } catch (e) { return toast(e.message); }
   refresh();
 }
 
@@ -2083,7 +2092,9 @@ function sendText(text, execute, c = active()) {
     return wakeSection(c.name, text);
   }
   if (chatOn(c)) {
-    api('POST', `/sessions/${enc(c.name)}/claude-keys`, { text, enter: !!execute }).catch((e) => toast(e.message, 5000));
+    api('POST', `/sessions/${enc(c.name)}/claude-keys`, { text, enter: !!execute }).then(() => {
+      if (c.chat.lastState === 'working' && text.trim()) toast('보냈습니다 — 작업 중이라 Claude가 하던 일 사이에 읽고, 읽으면 대화에 나타납니다', 4000);
+    }, (e) => toast(e.message, 5000));
   } else {
     if (text) c.term.paste(text);
     if (execute) setTimeout(() => c.send({ type: 'input', data: '\r' }), text ? 50 : 0);
@@ -2365,6 +2376,7 @@ async function pollChat(conn) {
     ch.warn.hidden = true;
     if (stick) trimChat(ch);
     ch.more.hidden = ch.start <= 0;
+    ch.lastState = r.state;
     showChatState(conn, r.state, r.prompt);
     pullDraft(conn, r.draft || '');
     if (stick) l.scrollTop = l.scrollHeight;
