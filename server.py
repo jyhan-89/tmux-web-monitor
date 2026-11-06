@@ -261,6 +261,7 @@ def api_sessions():
         elif s["section"]:
             path = secdb.transcript(sec)
             s["sleeping"] = True
+            s["state"] = "sleeping"
             s["claude"] = bool(path)
             if path:
                 s["preview"] = chat.last_said({"sessionId": path.stem}) or s["preview"]

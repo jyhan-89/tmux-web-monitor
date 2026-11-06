@@ -57,6 +57,7 @@ aside header button { padding:4px 8px; }
 .st-idle { color:var(--ok); }
 .st-running { color:var(--accent); }
 .st-shell { color:var(--dim); }
+.st-sleeping { color:var(--dim); opacity:.75; }
 .badge.st-waiting { background:rgba(240,179,90,.15); animation:pulse 1.4s infinite; }
 @keyframes pulse { 50% { opacity:.55; } }
 

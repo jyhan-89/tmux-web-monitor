@@ -13,7 +13,7 @@ const LS = {
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
 };
 
-const STATE_LABEL = { working: '작업 중', waiting: '확인 필요', idle: '대기', running: '실행 중', shell: '셸' };
+const STATE_LABEL = { working: '작업 중', waiting: '확인 필요', idle: '대기', running: '실행 중', shell: '셸', sleeping: '쉬는 중' };
 
 let sessions = [];
 let groups = [];
