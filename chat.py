@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import subprocess
 import time
 from pathlib import Path
 
@@ -332,6 +333,19 @@ def clear_input(pane: str) -> str:
     tmux("send-keys", "-t", pane, "-N", str(len(d) + 2), "BSpace")
     time.sleep(0.15)
     return screen(pane)[2]
+
+
+def type_into(pane: str, text: str, enter: bool) -> None:
+    if text:
+        buf = f"mon-{os.getpid()}-{time.time_ns()}"
+        r = subprocess.run(["tmux", "load-buffer", "-b", buf, "-"], input=text, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise ValueError(r.stderr.strip() or "tmux 명령 실패")
+        tmux("paste-buffer", "-p", "-d", "-b", buf, "-t", pane)
+    if enter:
+        if text:
+            time.sleep(0.05)
+        tmux("send-keys", "-t", pane, "Enter")
 
 
 def choose(pane: str, n: int, label: str) -> None:

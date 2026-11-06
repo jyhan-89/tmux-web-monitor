@@ -425,6 +425,27 @@ def api_delete_section(name: str):
     return {"ok": True, "message": out}
 
 
+class ClaudeKeys(BaseModel):
+    text: str = ""
+    enter: bool = False
+    esc: bool = False
+
+
+@api.post("/sessions/{name}/claude-keys")
+def api_claude_keys(name: str, body: ClaudeKeys):
+    sess = chat.find(name)
+    if not sess:
+        raise HTTPException(409, "Claude가 떠 있지 않습니다")
+    if body.esc:
+        tmux("send-keys", "-t", sess["pane"], "Escape")
+        return {"ok": True}
+    try:
+        chat.type_into(sess["pane"], body.text, body.enter)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return {"ok": True}
+
+
 @api.post("/sessions/{name}/clear-input")
 def api_clear_input(name: str):
     sess = chat.find(name)

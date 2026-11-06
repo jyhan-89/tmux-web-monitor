@@ -1983,7 +1983,7 @@ async function newWindow(name) {
   const c = conns.get(name);
   if (c && chatOn(c)) {
     setChatView(name, false);
-    toast('새 창은 터미널 보기로 엽니다 — 💬 로 대화 보기', 3000);
+    toast('새 창은 터미널 보기로 엽니다 — 💬 대화 보기는 그대로 Claude 창에 보냅니다', 3500);
   }
   refresh();
 }
@@ -2082,8 +2082,12 @@ function sendText(text, execute, c = active()) {
     if (!execute || !text.trim()) return toast('쉬는 섹션입니다 — 보낼 글을 입력하면 그 글로 깨웁니다');
     return wakeSection(c.name, text);
   }
-  if (text) c.term.paste(text);
-  if (execute) setTimeout(() => c.send({ type: 'input', data: '\r' }), text ? 50 : 0);
+  if (chatOn(c)) {
+    api('POST', `/sessions/${enc(c.name)}/claude-keys`, { text, enter: !!execute }).catch((e) => toast(e.message, 5000));
+  } else {
+    if (text) c.term.paste(text);
+    if (execute) setTimeout(() => c.send({ type: 'input', data: '\r' }), text ? 50 : 0);
+  }
   if (chatOn(c)) {
     c.chat.stick = true;
     setTimeout(() => pollChat(c), 700);
@@ -2170,7 +2174,7 @@ function initChat(conn) {
     if (ch.list.scrollTop < 60 && !ch.more.hidden) loadOlder(conn);
   });
   new ResizeObserver(() => { if (ch.atBottom !== false) ch.list.scrollTop = ch.list.scrollHeight; }).observe(ch.list);
-  ch.el.querySelector('.cstop').onclick = () => conn.send({ type: 'input', data: keySeq('esc') });
+  ch.el.querySelector('.cstop').onclick = () => api('POST', `/sessions/${enc(conn.name)}/claude-keys`, { esc: true }).catch((e) => toast(e.message));
   ch.el.querySelector('.cterm').onclick = () => setChatView(conn.name, false);
   ch.el.querySelector('.cconv').onclick = () => openConversations(conn.name);
   keepFocus(ch.el);
@@ -2358,7 +2362,7 @@ async function pollChat(conn) {
       const n = chatNode(ch, it);
       if (n) ch.items.appendChild(n);
     }
-    ch.warn.hidden = r.active !== false;
+    ch.warn.hidden = true;
     if (stick) trimChat(ch);
     ch.more.hidden = ch.start <= 0;
     showChatState(conn, r.state, r.prompt);
