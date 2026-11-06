@@ -519,6 +519,8 @@ function listMenu() {
     ...(companyMaker ? [{ label: '새 AI 회사', run: openNewCompany }] : []),
     { label: '세션 저장 / 복원', run: openPersist },
     '-',
+    ...chatDefaultMenu(),
+    '-',
     { label: '새로고침', run: refresh },
   ];
 }
@@ -1976,7 +1978,8 @@ $('imetoggle').onclick = () => setIme(!imeOn);
 
 const chatPref = LS.get('chatViews', {});
 const isClaude = (name) => !!sessions.find((s) => s.name === name)?.claude;
-const wantChat = (name) => chatPref[name] ?? (narrow.matches || matchMedia('(pointer: coarse)').matches);
+let chatDefault = LS.get('chatDefault', null);
+const wantChat = (name) => chatPref[name] ?? chatDefault ?? (narrow.matches || matchMedia('(pointer: coarse)').matches);
 const chatOn = (c) => !!c && isClaude(c.name) && wantChat(c.name);
 const chatActive = () => chatOn(active());
 const dur = (ms) => (ms >= 60000 ? `${Math.floor(ms / 60000)}분 ${Math.round((ms % 60000) / 1000)}초` : `${Math.round(ms / 1000)}초`);
@@ -2263,6 +2266,29 @@ $('barshow').onclick = () => setBarHidden(false);
 $('peekmenu').onclick = () => $('menu').click();
 
 $('chatview').onclick = () => { const a = active(); if (a) setChatView(a.name, !chatOn(a)); };
+
+function setChatDefault(v) {
+  chatDefault = v;
+  LS.set('chatDefault', v);
+  for (const k of Object.keys(chatPref)) delete chatPref[k];
+  LS.set('chatViews', chatPref);
+  syncChats();
+  toast(v === true ? 'Claude 세션을 모두 대화 보기로 엽니다' : v === false ? 'Claude 세션을 모두 터미널로 엽니다' : '폰은 대화 보기, PC는 터미널로 엽니다');
+}
+
+function chatDefaultMenu() {
+  const mark = (v) => (chatDefault === v ? '✓ ' : '');
+  return [
+    { label: `${mark(true)}Claude 세션 모두 대화 보기`, run: () => setChatDefault(true) },
+    { label: `${mark(false)}Claude 세션 모두 터미널`, run: () => setChatDefault(false) },
+    { label: `${mark(null)}기기에 맞게 (폰 대화 · PC 터미널)`, run: () => setChatDefault(null) },
+  ];
+}
+
+$('chatview').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  openCtx(e.clientX, e.clientY, chatDefaultMenu());
+});
 
 function setCtrl(on) {
   ctrlArmed = on;
