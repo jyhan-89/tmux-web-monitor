@@ -2428,17 +2428,34 @@ $('file').onchange = () => {
 };
 
 const termEl = $('term');
-termEl.addEventListener('dragover', (e) => {
+let dropTimer = null;
+function dropConn(target) {
+  const name = target?.closest?.('.pane')?.dataset.name;
+  return (name && conns.get(name)) || active();
+}
+function markDrop(c) {
+  for (const p of document.querySelectorAll('.pane.filedrop')) if (p !== c?.el) p.classList.remove('filedrop');
+  c?.el.classList.add('filedrop');
+  if (c) c.el.dataset.drop = `여기에 놓으면 ${c.name} 세션 폴더에 올립니다`;
+  clearTimeout(dropTimer);
+  dropTimer = setTimeout(() => markDrop(null), 200);
+}
+window.addEventListener('dragover', (e) => {
   if (!e.dataTransfer?.types.includes('Files')) return;
   e.preventDefault();
-  termEl.classList.add('dragover');
+  const c = dropConn(e.target);
+  e.dataTransfer.dropEffect = c ? 'copy' : 'none';
+  markDrop(c);
 });
-termEl.addEventListener('dragleave', () => termEl.classList.remove('dragover'));
-termEl.addEventListener('drop', (e) => {
-  termEl.classList.remove('dragover');
-  if (!e.dataTransfer?.files.length) return;
+window.addEventListener('drop', (e) => {
+  if (!e.dataTransfer?.types.includes('Files')) return;
   e.preventDefault();
-  uploadFiles([...e.dataTransfer.files]);
+  markDrop(null);
+  const files = [...e.dataTransfer.files];
+  const c = dropConn(e.target);
+  if (!files.length || !c) return toast(files.length ? '먼저 세션을 선택하세요' : '폴더는 올릴 수 없습니다');
+  if (activeName !== c.name) activate(c.name, false);
+  uploadFiles(files);
 });
 
 $('copymode').onclick = async () => {

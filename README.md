@@ -22,7 +22,7 @@ The UI is in Korean.
 - **Session management**: create (working folder, start command), rename, kill; switch and close tmux windows/panes
 - **Chat view**: sessions running Claude Code (✦ in the list, previewed by their last message) can be shown as a chat — messages and markdown read from the Claude transcript, tool calls folded to one line, a stop button while working. Phones open in chat view, desktops in the terminal; switch with 💬/⌨ in the top bar. Permission prompts and menus appear as buttons; pressing one moves the selection there and presses Enter (refused if the menu changed meanwhile). If another pane is active in that session a warning with a "Claude pane" button appears. Long-open chats drop old messages from the page and reload them on scroll-up
 - **Input**: input box for Korean (IME) text, buttons for frequently used commands, mobile keys (Esc, Ctrl, arrows, … — shown only while the terminal or input box has focus)
-- **Files**: browse under the home folder, view Markdown and code, upload files. Editing, copy, move and delete are optional (off by default)
+- **Files**: browse under the home folder, view Markdown and code, upload files (📎, paste, or drag and drop anywhere — saved to the working folder of the pane it is dropped on, path added to the input box). Editing, copy, move and delete are optional (off by default)
 - **Copy**: selecting text by dragging in the terminal or file viewer copies it to the clipboard of the device you are using
 - **Notifications**: web push when a Claude task finishes or needs input (requires HTTPS)
 - **Save/restore sessions**: the tmux-persist add-on saves periodically and restores after a reboot
