@@ -1999,6 +1999,14 @@ function autoGrow() {
 function sendText(text, execute) {
   const c = active();
   if (!c) return toast('먼저 세션을 선택하세요');
+  if (c.chat.draft && chatOn(c) && !sessionOf(c.name)?.sleeping && !c.chat.conv) {
+    const d = c.chat.draft;
+    c.chat.draft = '';
+    return api('POST', `/sessions/${enc(c.name)}/clear-input`).then(() => {
+      toast(`Claude 입력창에 남아 있던 글을 지우고 보냈습니다: ${d.slice(0, 40)}`, 4000);
+      sendText(text, execute);
+    }, (e) => toast(e.message, 5000));
+  }
   if (sessionOf(c.name)?.sleeping || c.chat.conv) {
     if (!execute || !text.trim()) return toast('쉬는 섹션입니다 — 보낼 글을 입력하면 그 글로 깨웁니다');
     return wakeSection(c.name, text);
@@ -2283,10 +2291,32 @@ async function pollChat(conn) {
     if (stick) trimChat(ch);
     ch.more.hidden = ch.start <= 0;
     showChatState(conn, r.state, r.prompt);
+    pullDraft(conn, r.draft || '');
     if (stick) l.scrollTop = l.scrollHeight;
   } catch {
   } finally {
     ch.busy = false;
+  }
+}
+
+async function pullDraft(conn, text) {
+  conn.chat.draft = text;
+  if (!text || conn.chat.pulling || activeName !== conn.name || !chatOn(conn)) return;
+  const box = $('ime');
+  if (box.value.trim() || (draftOwner && draftOwner !== conn.name)) return;
+  conn.chat.pulling = true;
+  try {
+    await api('POST', `/sessions/${enc(conn.name)}/clear-input`);
+    if (box.value.trim() || activeName !== conn.name) return;
+    setIme(true, false);
+    box.value = text;
+    draftOwner = conn.name;
+    autoGrow();
+    conn.chat.draft = '';
+    toast('Claude 입력창에 남아 있던 글을 가져왔습니다 — 고쳐서 보내세요', 4000);
+  } catch {
+  } finally {
+    conn.chat.pulling = false;
   }
 }
 

@@ -291,10 +291,47 @@ def prompt(text: str) -> dict | None:
     return {"body": "\n".join(body), "options": opts, "cur": cur}
 
 
-def screen(pane: str) -> tuple[str, dict | None]:
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def draft(raw: str) -> str:
+    lines = raw.splitlines()
+    plain = [ANSI.sub("", x) for x in lines]
+    borders = [i for i, x in enumerate(plain) if BOX_BORDER.match(x)][-2:]
+    if len(borders) < 2:
+        return ""
+    top, bot = borders
+    box, rawbox = plain[top + 1:bot], lines[top + 1:bot]
+    if not box or "❯" not in box[0]:
+        return ""
+    head = rawbox[0].split("❯", 1)[1]
+    while head:
+        head = head.lstrip("\xa0 ")
+        m = ANSI.match(head)
+        if not m:
+            break
+        if re.search(r"[\[;]2m$", m.group(0)):
+            return ""
+        head = head[m.end():]
+    out = [box[0].split("❯", 1)[1].replace("\xa0", " ").strip()] + [x.replace("\xa0", " ")[2:].rstrip() for x in box[1:]]
+    return "\n".join(out).strip()
+
+
+def screen(pane: str) -> tuple[str, dict | None, str]:
+    raw = tmux("capture-pane", "-p", "-e", "-t", pane).stdout.rstrip("\n")
     text = capture(pane)
     state, _ = analyze("claude", text)
-    return state, prompt(text) if state == "waiting" else None
+    return state, prompt(text) if state == "waiting" else None, draft(raw) if state == "idle" else ""
+
+
+def clear_input(pane: str) -> str:
+    state, _, d = screen(pane)
+    if state == "working" or not d:
+        return d
+    tmux("send-keys", "-t", pane, "End")
+    tmux("send-keys", "-t", pane, "-N", str(len(d) + 2), "BSpace")
+    time.sleep(0.15)
+    return screen(pane)[2]
 
 
 def choose(pane: str, n: int, label: str) -> None:

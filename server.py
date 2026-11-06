@@ -383,8 +383,8 @@ def api_chat(name: str, after: int | None = None, before: int | None = None, sid
                 "sleeping": True, "conv": conv, **chat.read(path, after, before)}
     if sid != sess["sessionId"]:
         after = before = None
-    state, ask = chat.screen(sess["pane"])
-    return {"claude": True, "sid": sess["sessionId"], "pane": sess["pane"], "active": sess["active"], "state": state, "prompt": ask,
+    state, ask, typed = chat.screen(sess["pane"])
+    return {"claude": True, "sid": sess["sessionId"], "pane": sess["pane"], "active": sess["active"], "state": state, "prompt": ask, "draft": typed,
             **chat.read(path, after, before)}
 
 
@@ -423,6 +423,17 @@ def api_delete_section(name: str):
         raise HTTPException(400, str(e))
     store.forget_session(name)
     return {"ok": True, "message": out}
+
+
+@api.post("/sessions/{name}/clear-input")
+def api_clear_input(name: str):
+    sess = chat.find(name)
+    if not sess:
+        raise HTTPException(404, "Claude 세션이 아닙니다")
+    left = chat.clear_input(sess["pane"])
+    if left:
+        raise HTTPException(409, "Claude 입력창을 비우지 못했습니다(작업 중이면 끝난 뒤에)")
+    return {"ok": True}
 
 
 @api.post("/sessions/{name}/focus-claude")
