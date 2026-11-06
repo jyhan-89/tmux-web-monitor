@@ -395,6 +395,8 @@ def api_choose(name: str, body: Choose):
 async def api_upload(name: str, file: UploadFile):
     s = find_session(name)
     folder = Path(s["path"] or os.path.expanduser("~"))
+    if not folder.is_dir():
+        folder = Path(os.path.expanduser("~"))
     base = re.sub(r"[/\\\x00]", "_", Path(file.filename or "upload").name).lstrip(".") or "upload"
     dest = folder / base
     stem, suffix, n = dest.stem, dest.suffix, 1
