@@ -1035,7 +1035,9 @@ function createConn(name) {
       });
     }, 0);
   });
-  new ResizeObserver(() => fitConn(conn)).observe(el);
+  const ro = new ResizeObserver(() => fitConn(conn));
+  ro.observe(el);
+  ro.observe(host);
   makeBar(conn);
 
   connectWs(conn);
@@ -1977,7 +1979,12 @@ async function selectTarget(name, window, pane) {
 }
 
 async function newWindow(name) {
-  try { await api('POST', `/sessions/${enc(name)}/windows`); } catch (e) { toast(e.message); }
+  try { await api('POST', `/sessions/${enc(name)}/windows`); } catch (e) { return toast(e.message); }
+  const c = conns.get(name);
+  if (c && chatOn(c)) {
+    setChatView(name, false);
+    toast('새 창은 터미널 보기로 엽니다 — 💬 로 대화 보기', 3000);
+  }
   refresh();
 }
 
