@@ -373,3 +373,5 @@ body.barhide #barpeek { display:flex; }
 .cpw > pre { align-self:stretch; margin-top:0; }
 .cpb { order:-1; padding:1px 10px; margin-bottom:2px; font-size:12px; background:#2a2c31; color:inherit; border:1px solid var(--line); border-radius:4px; cursor:pointer; }
 @media (pointer:coarse) { .cpb { padding:4px 12px; } }
+#sessions .name.sleeping::after { content:' 💤'; font-size:11px; opacity:.8; }
+.cstate.sleeping { background:rgba(120,130,150,.18); }

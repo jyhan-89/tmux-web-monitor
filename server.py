@@ -32,6 +32,7 @@ from send2trash import send2trash
 
 import auth
 import chat
+import secdb
 import push
 import store
 from tmuxctl import capture, list_sessions, session_exists, tmux, valid_name
@@ -252,8 +253,17 @@ def api_sessions():
         s["preview"] = st.get("preview", [])
         mine = [live[p["id"]] for w in s["windows"] for p in w["panes"] if p["id"] in live and chat.transcript(live[p["id"]])]
         s["claude"] = bool(mine)
+        sec = secdb.of(s["name"])
+        s["section"] = bool(sec and sec["managed"])
+        s["sleeping"] = False
         if mine:
             s["preview"] = chat.last_said(mine[0]) or s["preview"]
+        elif s["section"]:
+            path = secdb.transcript(sec)
+            s["sleeping"] = True
+            s["claude"] = bool(path)
+            if path:
+                s["preview"] = chat.last_said({"sessionId": path.stem}) or s["preview"]
     return sessions
 
 
@@ -294,6 +304,13 @@ def api_rename_session(name: str, body: Rename):
 
 @api.delete("/sessions/{name}")
 def api_kill_session(name: str):
+    sec = secdb.of(name)
+    if sec and sec["managed"]:
+        try:
+            secdb.run(sec, "stop", sec["name"], "--ondemand")
+        except RuntimeError as e:
+            raise HTTPException(400, str(e))
+        return {"ok": True, "slept": True}
     run("kill-session", "-t", f"={name}")
     store.forget_session(name)
     return {"ok": True}
@@ -351,16 +368,60 @@ def api_capture(name: str, lines: int = 2000):
 
 
 @api.get("/sessions/{name}/chat")
-def api_chat(name: str, after: int | None = None, before: int | None = None, sid: str = ""):
-    sess = chat.find(name)
+def api_chat(name: str, after: int | None = None, before: int | None = None, sid: str = "", conv: str = ""):
+    sess = None if conv else chat.find(name)
     path = sess and chat.transcript(sess)
     if not path:
-        return {"claude": False}
+        sec = secdb.of(name)
+        path = sec and sec["managed"] and secdb.transcript(sec, conv)
+        if not path:
+            return {"claude": False}
+        if sid != path.stem:
+            after = before = None
+        return {"claude": True, "sid": path.stem, "pane": None, "active": True, "state": "sleeping" if not sess else "", "prompt": None,
+                "sleeping": True, "conv": conv, **chat.read(path, after, before)}
     if sid != sess["sessionId"]:
         after = before = None
     state, ask = chat.screen(sess["pane"])
     return {"claude": True, "sid": sess["sessionId"], "pane": sess["pane"], "active": sess["active"], "state": state, "prompt": ask,
             **chat.read(path, after, before)}
+
+
+class Wake(BaseModel):
+    text: str = ""
+
+
+def _section(name: str) -> dict:
+    sec = secdb.of(name)
+    if not sec or not sec["managed"]:
+        raise HTTPException(404, "섹션 DB에 있는 섹션이 아닙니다")
+    return sec
+
+
+@api.post("/sessions/{name}/wake")
+def api_wake(name: str, body: Wake):
+    sec = _section(name)
+    try:
+        out = secdb.run(sec, "start", sec["name"], "--prompt", body.text.strip() or "요청함 확인")
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "message": out}
+
+
+@api.get("/sessions/{name}/conversations")
+def api_conversations(name: str):
+    return secdb.conversations(_section(name))
+
+
+@api.delete("/sessions/{name}/section")
+def api_delete_section(name: str):
+    sec = _section(name)
+    try:
+        out = secdb.run(sec, "del", sec["name"], "--force")
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    store.forget_session(name)
+    return {"ok": True, "message": out}
 
 
 @api.post("/sessions/{name}/focus-claude")
