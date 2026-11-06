@@ -953,7 +953,7 @@ function createConn(name) {
   el.addEventListener('mousedown', () => { if (activeName !== conn.name) activate(conn.name, false); });
   term.parser.registerOscHandler(52, (data) => {
     const b64 = data.slice(data.indexOf(';') + 1);
-    if (!b64 || b64 === '?') return true;
+    if (!b64 || b64 === '?' || activeName !== conn.name) return true;
     let text;
     try {
       text = new TextDecoder().decode(Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0)));
@@ -1462,6 +1462,18 @@ function activate(name, focus = true) {
   }
 }
 
+const drafts = new Map();
+let draftOwner = null;
+function syncDraft() {
+  if (draftOwner === activeName) return;
+  const box = $('ime');
+  if (draftOwner) {
+    if (box.value) drafts.set(draftOwner, box.value); else drafts.delete(draftOwner);
+  }
+  box.value = (activeName && drafts.get(activeName)) || '';
+  draftOwner = activeName;
+}
+
 function focusInput() {
   const c = active();
   if (!c || narrow.matches) return;
@@ -1729,6 +1741,7 @@ function layout() {
     if (!groupOf(name) && !inOtherDesks(name)) addToGroup(name, groupOf(activeName) || leaves()[0], null, false);
   }
   if (!activeName) activeName = leaves()[0]?.active || null;
+  syncDraft();
   const key = narrow.matches ? `n:${activeName}` : JSON.stringify(tree, (k, v) => (k === 'sizes' ? undefined : v));
   const term = $('term');
   if (key !== layoutKey || !term.querySelector('.lroot')) {
@@ -1935,12 +1948,17 @@ function sendText(text, execute) {
 
 function sendIme(execute) {
   if (!active()) return toast('먼저 세션을 선택하세요');
+  if (draftOwner !== activeName) {
+    syncDraft();
+    return toast('입력하던 세션과 지금 세션이 달라 보내지 않았습니다');
+  }
   sendText(ime.value, execute);
   ime.value = '';
   autoGrow();
 }
 
 ime.addEventListener('input', () => {
+  if (draftOwner === null) draftOwner = activeName;
   const c = active();
   if (ctrlArmed && c && ime.value.length === 1) {
     c.send({ type: 'input', data: applyCtrl(ime.value) });
